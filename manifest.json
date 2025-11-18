@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Vue Grab for Claude Code",
-  "version": "1.0.0",
-  "description": "Click any Vue component to extract its context for Claude Code",
+  "version": "2.0.0",
+  "description": "Click any Vue component to extract its context with Pinia, Vuex, and TanStack Query support for Claude Code",
   "permissions": [
     "activeTab",
-    "clipboardWrite"
+    "clipboardWrite",
+    "downloads"
   ],
   "action": {
     "default_popup": "popup.html",
