@@ -50,7 +50,22 @@
     #toggleBtn.active:hover {
       background: #c0392b;
     }
-    
+
+    #cursorBtn {
+      background: #007ACC;
+      color: white;
+      margin-top: 8px;
+    }
+
+    #cursorBtn:hover {
+      background: #005A9E;
+    }
+
+    #cursorBtn:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+
     .status {
       margin-top: 12px;
       padding: 8px;
@@ -83,13 +98,14 @@
 <body>
   <h2>🎯 Vue Grab</h2>
   <p>Click any Vue component on the page to extract its context for Claude Code.</p>
-  
+
   <button id="toggleBtn">Start Grabbing</button>
-  
+  <button id="cursorBtn" style="display: none;">Send to Cursor Composer</button>
+
   <div id="status" class="status inactive">
     Click the button to activate
   </div>
-  
+
   <div class="keyboard-hint">
     Press <strong>Esc</strong> to cancel
   </div>
