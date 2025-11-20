@@ -12,6 +12,10 @@ A browser extension that lets you click any Vue component on a webpage and extra
 - 📦 **Vuex Store Detection**: Captures Vuex state, getters, mutations, and actions
 - 🔍 **TanStack Query Support**: Extracts active queries with their status, data, and metadata
 - 🎯 **Smart Filtering**: Identifies which stores and queries are actually used by the component
+- 🛣️ **Vue Router Integration**: Captures current route, params, query, and available routes
+- 🌳 **Component Hierarchy**: Shows parent, children, and ancestor chain of components
+- 🔒 **Sensitive Data Filtering**: Automatically redacts passwords, tokens, API keys, and secrets
+- 📱 **Background Service**: Enhanced download handling and Cursor deep linking support
 - 👁️ **Visual Feedback**: Hover highlighting shows component names
 - ⌨️ **Keyboard Shortcuts**: Press `Esc` to cancel grabbing mode
 - 🔄 **Vue 2 & 3 Support**: Works with both major Vue versions
@@ -65,6 +69,12 @@ After grabbing a component, click the "Send to Cursor Composer" button to:
 - Template (when available)
 - Element details (tag, ID, classes, attributes)
 
+### Component Hierarchy
+- Parent component (direct parent)
+- Full ancestor chain (all parent components up the tree)
+- Child components (direct children)
+- Nesting depth in the component tree
+
 ### Pinia Stores (if detected)
 - Store IDs and their current state
 - Getter values
@@ -85,6 +95,20 @@ After grabbing a component, click the "Send to Cursor Composer" button to:
 - Error messages (if any)
 - Last updated timestamps
 - **Smart Detection**: Identifies which queries are "definitely used" vs "potentially related"
+
+### Vue Router (if available)
+- Current route path, name, and full path
+- Route params and query parameters
+- Route hash and metadata
+- Matched route components
+- List of all available routes in the application
+- Router mode (history, hash, etc.)
+
+### Security & Privacy
+- **Automatic Redaction**: Sensitive data is automatically detected and redacted
+- Filters passwords, tokens, API keys, secrets, and other credentials
+- Detects common token patterns (Stripe, GitHub, AWS, Google, etc.)
+- Shows partial values (first 4 chars) for context while protecting secrets
 
 ## Example Output
 
@@ -200,26 +224,33 @@ Want to customize or extend Vue Grab?
 # Project structure
 vue-grab-extension/
 ├── manifest.json       # Extension configuration
+├── background.js      # Background service worker
 ├── popup.html         # Extension popup UI
 ├── popup.js          # Popup logic
-├── content.js        # Main grabbing logic
+├── content.js        # Main grabbing logic (Vue detection, extraction)
 ├── content.css       # Styles for highlights/toasts
-└── icons/           # Extension icons (add your own!)
+└── icons/           # Extension icons (SVG format)
+    ├── icon16.svg
+    ├── icon48.svg
+    └── icon128.svg
 ```
 
 ### TODO / Ideas
 
-- [ ] Add actual extension icons (currently placeholders)
+- [x] Add actual extension icons (currently placeholders) ✅
 - [x] Support for Pinia/Vuex state extraction ✅
 - [x] Export to Markdown files ✅
 - [x] Cursor Composer integration ✅
 - [x] TanStack Query/Vue Query support ✅
 - [x] Smart filtering to detect component usage ✅
+- [x] Vue Router route information ✅
+- [x] Component hierarchy visualization ✅
+- [x] Filter sensitive data (passwords, tokens, etc.) ✅
+- [x] Background script for better deep linking support ✅
 - [ ] Direct integration with Claude Code API
-- [ ] Vue Router route information
-- [ ] Component hierarchy visualization
-- [ ] Filter sensitive data (passwords, tokens, etc.)
-- [ ] Background script for better deep linking support
+- [ ] Settings panel for customization
+- [ ] Export to multiple formats (JSON, YAML)
+- [ ] Custom filtering rules
 
 ## Contributing
 

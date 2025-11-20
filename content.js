@@ -154,6 +154,8 @@ function extractVueComponent(element) {
     piniaStores: null,
     vuexStore: null,
     tanstackQueries: null,
+    vueRouter: null,
+    componentHierarchy: null,
     element: {
       tagName: element.tagName.toLowerCase(),
       id: element.id || null,
@@ -201,6 +203,8 @@ function extractVueComponent(element) {
   data.piniaStores = extractPiniaStores(instance);
   data.vuexStore = extractVuexStore(instance);
   data.tanstackQueries = extractTanStackQueries(instance);
+  data.vueRouter = extractVueRouter(instance);
+  data.componentHierarchy = extractComponentHierarchy(instance, element);
 
   return data;
 }
@@ -481,6 +485,181 @@ function extractTanStackQueries(instance) {
   }
 }
 
+function extractVueRouter(instance) {
+  try {
+    let router = null;
+    let route = null;
+
+    // Vue 3 - try to get from proxy
+    if (instance.proxy) {
+      router = instance.proxy.$router;
+      route = instance.proxy.$route;
+    }
+
+    // Vue 2 - try $router and $route directly
+    if (!router && instance.$router) {
+      router = instance.$router;
+      route = instance.$route;
+    }
+
+    // Try to get from app context (Vue 3)
+    if (!router && instance.appContext) {
+      router = instance.appContext.config.globalProperties.$router;
+      route = instance.appContext.config.globalProperties.$route;
+    }
+
+    if (!route && !router) {
+      return null;
+    }
+
+    const routerData = {};
+
+    // Extract current route information
+    if (route) {
+      routerData.currentRoute = {
+        path: route.path,
+        name: route.name || null,
+        params: serializeData(route.params) || {},
+        query: serializeData(route.query) || {},
+        hash: route.hash || null,
+        fullPath: route.fullPath || route.path,
+        meta: serializeData(route.meta) || {},
+        matched: route.matched ? route.matched.map(record => ({
+          path: record.path,
+          name: record.name || null,
+          components: Object.keys(record.components || {})
+        })) : []
+      };
+    }
+
+    // Extract available routes if possible
+    if (router) {
+      try {
+        // Vue 3
+        if (router.options && router.options.routes) {
+          routerData.availableRoutes = router.options.routes.map(route => ({
+            path: route.path,
+            name: route.name || null,
+            meta: serializeData(route.meta) || {}
+          }));
+        }
+        // Vue 2
+        else if (router.options && router.options.routes) {
+          routerData.availableRoutes = router.options.routes.map(route => ({
+            path: route.path,
+            name: route.name || null,
+            meta: serializeData(route.meta) || {}
+          }));
+        }
+
+        // Get router mode
+        routerData.mode = router.mode || (router.options ? router.options.history?.base : null) || 'unknown';
+      } catch (e) {
+        // Routes might not be accessible in production builds
+        console.log('Could not extract available routes:', e);
+      }
+    }
+
+    return Object.keys(routerData).length > 0 ? routerData : null;
+  } catch (e) {
+    console.error('Error extracting Vue Router:', e);
+    return null;
+  }
+}
+
+function extractComponentHierarchy(instance, element) {
+  try {
+    const hierarchy = {
+      parent: null,
+      ancestors: [],
+      children: [],
+      depth: 0
+    };
+
+    // Get parent component
+    let parentInstance = null;
+
+    // Vue 3
+    if (instance.parent) {
+      parentInstance = instance.parent;
+    }
+
+    // Vue 2
+    if (!parentInstance && instance.$parent) {
+      parentInstance = instance.$parent;
+    }
+
+    // Build ancestor chain
+    let current = parentInstance;
+    let depth = 0;
+    while (current && depth < 10) { // Limit depth to prevent infinite loops
+      const name = getComponentName(current);
+      const file = current.type?.__file || current.$options?.__file || null;
+
+      hierarchy.ancestors.push({
+        name: name,
+        file: file
+      });
+
+      // Get next parent
+      current = current.parent || current.$parent;
+      depth++;
+    }
+
+    if (hierarchy.ancestors.length > 0) {
+      hierarchy.parent = hierarchy.ancestors[0];
+      hierarchy.depth = hierarchy.ancestors.length;
+    }
+
+    // Get child components
+    // Vue 3
+    if (instance.subTree && instance.subTree.children) {
+      const children = extractChildrenFromVNode(instance.subTree);
+      hierarchy.children = children.map(child => ({
+        name: getComponentName(child),
+        file: child.type?.__file || null
+      }));
+    }
+
+    // Vue 2
+    if (!hierarchy.children.length && instance.$children) {
+      hierarchy.children = instance.$children.map(child => ({
+        name: getComponentName(child),
+        file: child.$options?.__file || null
+      }));
+    }
+
+    return hierarchy;
+  } catch (e) {
+    console.error('Error extracting component hierarchy:', e);
+    return null;
+  }
+}
+
+function extractChildrenFromVNode(vnode, depth = 0) {
+  if (depth > 5) return []; // Limit recursion depth
+
+  const children = [];
+
+  if (!vnode) return children;
+
+  // Check if this vnode has a component
+  if (vnode.component) {
+    children.push(vnode.component);
+  }
+
+  // Recursively check children
+  if (Array.isArray(vnode.children)) {
+    vnode.children.forEach(child => {
+      if (child && typeof child === 'object') {
+        children.push(...extractChildrenFromVNode(child, depth + 1));
+      }
+    });
+  }
+
+  return children;
+}
+
 function getComponentSourceCode(instance) {
   try {
     // Try to get the component's setup function or render function as string
@@ -516,66 +695,143 @@ function getComponentSourceCode(instance) {
   }
 }
 
+function isSensitiveKey(key) {
+  const sensitivePatterns = [
+    /password/i,
+    /passwd/i,
+    /pwd/i,
+    /secret/i,
+    /token/i,
+    /api[_-]?key/i,
+    /apikey/i,
+    /auth/i,
+    /authorization/i,
+    /bearer/i,
+    /credential/i,
+    /private[_-]?key/i,
+    /access[_-]?key/i,
+    /session[_-]?id/i,
+    /csrf/i,
+    /xsrf/i,
+    /salt/i,
+    /hash/i,
+    /ssn/i,
+    /social[_-]?security/i,
+    /credit[_-]?card/i,
+    /card[_-]?number/i,
+    /cvv/i,
+    /pin/i,
+    /security[_-]?code/i
+  ];
+
+  return sensitivePatterns.some(pattern => pattern.test(key));
+}
+
+function isSensitiveValue(value) {
+  if (typeof value !== 'string') return false;
+
+  // Check for common token/key patterns
+  const sensitiveValuePatterns = [
+    /^sk_live_[a-zA-Z0-9]{24,}$/, // Stripe secret key
+    /^sk_test_[a-zA-Z0-9]{24,}$/, // Stripe test key
+    /^pk_live_[a-zA-Z0-9]{24,}$/, // Stripe publishable key
+    /^pk_test_[a-zA-Z0-9]{24,}$/, // Stripe test publishable key
+    /^AIza[0-9A-Za-z-_]{35}$/, // Google API key
+    /^ya29\.[0-9A-Za-z\-_]+$/, // Google OAuth token
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, // UUID (might be session ID)
+    /^ghp_[a-zA-Z0-9]{36}$/, // GitHub personal access token
+    /^gho_[a-zA-Z0-9]{36}$/, // GitHub OAuth token
+    /^github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}$/, // GitHub fine-grained token
+    /^xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}$/, // Slack token
+    /^AKIA[0-9A-Z]{16}$/, // AWS access key
+    /^[A-Za-z0-9+/]{40}$/, // Generic base64 that might be a secret (40 chars)
+    /^Bearer\s+[A-Za-z0-9\-._~+/]+=*$/i // Bearer token
+  ];
+
+  return sensitiveValuePatterns.some(pattern => pattern.test(value));
+}
+
+function maskSensitiveData(key, value) {
+  if (typeof value === 'string') {
+    // For very short values, just mask completely
+    if (value.length <= 4) {
+      return '[REDACTED]';
+    }
+    // For longer values, show first few chars
+    return `${value.substring(0, 4)}...[REDACTED]`;
+  }
+  return '[REDACTED]';
+}
+
 function serializeData(obj) {
   if (!obj) return null;
-  
+
   try {
     // Create a deep copy and handle circular references
     const seen = new WeakSet();
-    
-    const serialize = (value, depth = 0) => {
+
+    const serialize = (value, depth = 0, currentKey = '') => {
       // Limit depth to prevent huge outputs
       if (depth > 5) return '[Deep Object]';
-      
+
       if (value === null) return null;
       if (value === undefined) return undefined;
-      
+
+      // Check if current key is sensitive
+      if (currentKey && isSensitiveKey(currentKey)) {
+        return maskSensitiveData(currentKey, value);
+      }
+
       // Handle primitives
       if (typeof value !== 'object' && typeof value !== 'function') {
+        // Check if value looks like sensitive data
+        if (typeof value === 'string' && isSensitiveValue(value)) {
+          return maskSensitiveData(currentKey, value);
+        }
         return value;
       }
-      
+
       // Handle functions
       if (typeof value === 'function') {
         return `[Function: ${value.name || 'anonymous'}]`;
       }
-      
+
       // Handle circular references
       if (seen.has(value)) {
         return '[Circular]';
       }
       seen.add(value);
-      
+
       // Handle arrays
       if (Array.isArray(value)) {
-        return value.map(item => serialize(item, depth + 1));
+        return value.map((item, idx) => serialize(item, depth + 1, `${currentKey}[${idx}]`));
       }
-      
+
       // Handle DOM elements
       if (value instanceof HTMLElement) {
         return `[HTMLElement: ${value.tagName.toLowerCase()}]`;
       }
-      
+
       // Handle dates
       if (value instanceof Date) {
         return value.toISOString();
       }
-      
+
       // Handle objects
       const result = {};
       for (const key in value) {
         // Skip internal Vue properties
         if (key.startsWith('_') || key.startsWith('$')) continue;
-        
+
         try {
-          result[key] = serialize(value[key], depth + 1);
+          result[key] = serialize(value[key], depth + 1, key);
         } catch (e) {
           result[key] = '[Unserializable]';
         }
       }
       return result;
     };
-    
+
     return serialize(obj);
   } catch (e) {
     console.error('Serialization error:', e);
@@ -608,12 +864,69 @@ function fallbackCopy(text) {
   document.body.removeChild(textarea);
 }
 
+function formatComponentHierarchy(data) {
+  if (!data.componentHierarchy) {
+    return '- **Structure**: Standalone component (no hierarchy detected)\n';
+  }
+
+  const hierarchy = data.componentHierarchy;
+  let output = '';
+
+  // Show parent
+  if (hierarchy.parent) {
+    output += `- **Parent**: ${hierarchy.parent.name}`;
+    if (hierarchy.parent.file) {
+      output += ` (${hierarchy.parent.file})`;
+    }
+    output += '\n';
+  } else {
+    output += '- **Parent**: None (root component)\n';
+  }
+
+  // Show full ancestor chain if more than just direct parent
+  if (hierarchy.ancestors.length > 1) {
+    output += `- **Ancestor Chain** (${hierarchy.ancestors.length} levels):\n`;
+    hierarchy.ancestors.forEach((ancestor, idx) => {
+      output += `  ${idx + 1}. ${ancestor.name}`;
+      if (ancestor.file) {
+        output += ` → ${ancestor.file}`;
+      }
+      output += '\n';
+    });
+  }
+
+  // Show children
+  if (hierarchy.children.length > 0) {
+    output += `- **Child Components** (${hierarchy.children.length}):\n`;
+    hierarchy.children.forEach(child => {
+      output += `  - ${child.name}`;
+      if (child.file) {
+        output += ` (${child.file})`;
+      }
+      output += '\n';
+    });
+  } else {
+    output += '- **Child Components**: None (leaf component)\n';
+  }
+
+  // Show depth
+  if (hierarchy.depth > 0) {
+    output += `- **Nesting Depth**: ${hierarchy.depth} level${hierarchy.depth > 1 ? 's' : ''} deep\n`;
+  }
+
+  return output;
+}
+
 function formatForClaudeCCode(data) {
   let output = `# Vue Component Context
 
 ## Component Information
 - **Name**: ${data.componentName}
 - **File**: ${data.filePath || 'Unknown'}
+
+## Component Hierarchy
+
+${formatComponentHierarchy(data)}
 
 ## Element
 - **Tag**: <${data.element.tagName}>
@@ -746,6 +1059,60 @@ ${data.methods?.length ? data.methods.join(', ') : 'None'}
     if (unknown.length > 0) {
       output += `### Other Active Queries\n`;
       output += `${unknown.map(q => JSON.stringify(q.queryKey)).join(', ')}\n\n`;
+    }
+  }
+
+  // Add Vue Router section
+  if (data.vueRouter) {
+    output += `\n## Vue Router\n\n`;
+
+    if (data.vueRouter.currentRoute) {
+      const route = data.vueRouter.currentRoute;
+      output += `### Current Route\n\n`;
+      output += `- **Path:** ${route.path}\n`;
+      if (route.name) output += `- **Name:** ${route.name}\n`;
+      output += `- **Full Path:** ${route.fullPath}\n`;
+
+      if (route.hash) {
+        output += `- **Hash:** ${route.hash}\n`;
+      }
+
+      if (Object.keys(route.params).length > 0) {
+        output += `\n**Params:**\n\`\`\`json\n${JSON.stringify(route.params, null, 2)}\n\`\`\`\n`;
+      }
+
+      if (Object.keys(route.query).length > 0) {
+        output += `\n**Query:**\n\`\`\`json\n${JSON.stringify(route.query, null, 2)}\n\`\`\`\n`;
+      }
+
+      if (Object.keys(route.meta).length > 0) {
+        output += `\n**Meta:**\n\`\`\`json\n${JSON.stringify(route.meta, null, 2)}\n\`\`\`\n`;
+      }
+
+      if (route.matched && route.matched.length > 0) {
+        output += `\n**Matched Routes:**\n`;
+        route.matched.forEach((match, idx) => {
+          output += `${idx + 1}. ${match.path}`;
+          if (match.name) output += ` (${match.name})`;
+          if (match.components.length > 0) output += ` - Components: ${match.components.join(', ')}`;
+          output += `\n`;
+        });
+      }
+      output += `\n`;
+    }
+
+    if (data.vueRouter.availableRoutes && data.vueRouter.availableRoutes.length > 0) {
+      output += `### Available Routes (${data.vueRouter.availableRoutes.length})\n\n`;
+      data.vueRouter.availableRoutes.forEach(route => {
+        output += `- \`${route.path}\``;
+        if (route.name) output += ` (${route.name})`;
+        output += `\n`;
+      });
+      output += `\n`;
+    }
+
+    if (data.vueRouter.mode) {
+      output += `**Router Mode:** ${data.vueRouter.mode}\n\n`;
     }
   }
 

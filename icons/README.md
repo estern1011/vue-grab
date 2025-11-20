@@ -1,14 +1,14 @@
 # Icons
 
-Add your extension icons here:
-- icon16.png (16x16)
-- icon48.png (48x48)
-- icon128.png (128x128)
+This directory contains SVG icons for the Vue Grab extension:
+- icon16.svg (16x16) - Small toolbar icon
+- icon48.svg (48x48) - Medium extension icon
+- icon128.svg (128x128) - Large extension icon for store listings
 
-For now, the extension will work without icons, but you'll see a default extension icon in Chrome/Firefox.
+The icons feature:
+- Vue.js brand colors (green #42b883 and dark #35495e)
+- Linear gradient for modern look
+- Target/crosshair design representing the "grab" functionality
+- Scalable SVG format for crisp display at any size
 
-You can create simple icons using any image editor, or use a service like:
-- https://favicon.io/
-- https://realfavicongenerator.net/
-
-Suggested design: A combination of the Vue logo colors (green #42b883) with a target/crosshair icon 🎯
+Chrome and Firefox both support SVG icons in manifest v3, so no PNG conversion is needed.
