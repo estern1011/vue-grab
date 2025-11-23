@@ -2,49 +2,79 @@ const toggleBtn = document.getElementById('toggleBtn');
 const cursorBtn = document.getElementById('cursorBtn');
 const statusDiv = document.getElementById('status');
 
-// Check current state when popup opens
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  chrome.tabs.sendMessage(
-    tabs[0].id,
-    { action: 'getState' },
-    (response) => {
-      if (response) {
-        updateUI(response.isActive, response.hasData);
-      }
+// Helper to safely send messages to content script with error handling
+function sendMessageToTab(action, callback) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    // Validate we have a tab
+    if (!tabs || !tabs[0] || !tabs[0].id) {
+      showError('No active tab found');
+      return;
     }
-  );
+
+    const tab = tabs[0];
+
+    // Check if this is a page where content scripts can't run
+    if (tab.url && (
+      tab.url.startsWith('chrome://') ||
+      tab.url.startsWith('chrome-extension://') ||
+      tab.url.startsWith('about:') ||
+      tab.url.startsWith('edge://') ||
+      tab.url.startsWith('devtools://') ||
+      tab.url === 'about:blank'
+    )) {
+      showError('Cannot run on browser internal pages');
+      return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { action }, (response) => {
+      // Check for connection errors
+      if (chrome.runtime.lastError) {
+        console.error('Connection error:', chrome.runtime.lastError.message);
+        showError('Content script not loaded. Try refreshing the page.');
+        return;
+      }
+
+      if (callback) {
+        callback(response);
+      }
+    });
+  });
+}
+
+function showError(message) {
+  statusDiv.textContent = '⚠ ' + message;
+  statusDiv.className = 'status error';
+  toggleBtn.disabled = true;
+  toggleBtn.textContent = 'Not Available';
+}
+
+// Check current state when popup opens
+sendMessageToTab('getState', (response) => {
+  if (response) {
+    updateUI(response.isActive, response.hasData);
+  }
 });
 
 toggleBtn.addEventListener('click', () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.tabs.sendMessage(
-      tabs[0].id,
-      { action: 'toggle' },
-      (response) => {
-        if (response) {
-          updateUI(response.isActive, false);
+  if (toggleBtn.disabled) return;
 
-          // Close popup after activating
-          if (response.isActive) {
-            setTimeout(() => window.close(), 500);
-          }
-        }
+  sendMessageToTab('toggle', (response) => {
+    if (response) {
+      updateUI(response.isActive, false);
+
+      // Close popup after activating
+      if (response.isActive) {
+        setTimeout(() => window.close(), 500);
       }
-    );
+    }
   });
 });
 
 cursorBtn.addEventListener('click', () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.tabs.sendMessage(
-      tabs[0].id,
-      { action: 'getLastData' },
-      (response) => {
-        if (response && response.data) {
-          downloadToCursorFolder(response.data);
-        }
-      }
-    );
+  sendMessageToTab('getLastData', (response) => {
+    if (response && response.data) {
+      downloadToCursorFolder(response.data);
+    }
   });
 });
 
@@ -61,20 +91,14 @@ function downloadToCursorFolder(data) {
   if (!content && data.componentName) {
     // This is a component data object, we need to format it
     // Since we don't have access to formatForClaudeCCode here, we'll send a message
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      chrome.tabs.sendMessage(
-        tabs[0].id,
-        { action: 'sendToCursor' },
-        (response) => {
-          if (response && response.success) {
-            statusDiv.textContent = '✓ Downloading context file...';
-            statusDiv.className = 'status active';
-          } else {
-            statusDiv.textContent = '✗ Failed to send to Cursor';
-            statusDiv.className = 'status inactive';
-          }
-        }
-      );
+    sendMessageToTab('sendToCursor', (response) => {
+      if (response && response.success) {
+        statusDiv.textContent = '✓ Downloading context file...';
+        statusDiv.className = 'status active';
+      } else {
+        statusDiv.textContent = '✗ Failed to send to Cursor';
+        statusDiv.className = 'status inactive';
+      }
     });
     return;
   }
@@ -102,6 +126,8 @@ function downloadToCursorFolder(data) {
 }
 
 function updateUI(isActive, hasData) {
+  toggleBtn.disabled = false;
+
   if (isActive) {
     toggleBtn.textContent = 'Stop Grabbing';
     toggleBtn.classList.add('active');
