@@ -1,5 +1,5 @@
 const toggleBtn = document.getElementById('toggleBtn');
-const cursorBtn = document.getElementById('cursorBtn');
+const saveBtn = document.getElementById('saveBtn');
 const statusDiv = document.getElementById('status');
 
 // Helper to safely send messages to content script with error handling
@@ -70,10 +70,10 @@ toggleBtn.addEventListener('click', () => {
   });
 });
 
-cursorBtn.addEventListener('click', () => {
+saveBtn.addEventListener('click', () => {
   sendMessageToTab('getLastData', (response) => {
     if (response && response.data) {
-      downloadToCursorFolder(response.data);
+      downloadContextFile(response.data);
     }
   });
 });
@@ -81,27 +81,30 @@ cursorBtn.addEventListener('click', () => {
 // Listen for download requests from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'downloadFile') {
-    downloadToCursorFolder({ content: request.content, filename: request.filename });
+    downloadContextFile({ content: request.content, filename: request.filename });
   }
 });
 
-function downloadToCursorFolder(data) {
+function downloadContextFile(data) {
   // Format the data if it's a component object
   let content = data.content;
   if (!content && data.componentName) {
     // This is a component data object, we need to format it
-    // Since we don't have access to formatForClaudeCCode here, we'll send a message
-    sendMessageToTab('sendToCursor', (response) => {
+    sendMessageToTab('formatAndDownload', (response) => {
       if (response && response.success) {
-        statusDiv.textContent = '✓ Downloading context file...';
+        statusDiv.textContent = '✓ Downloading...';
         statusDiv.className = 'status active';
       } else {
-        statusDiv.textContent = '✗ Failed to send to Cursor';
+        statusDiv.textContent = '✗ Download failed';
         statusDiv.className = 'status inactive';
       }
     });
     return;
   }
+
+  // Generate filename with timestamp
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const filename = data.filename || `vue-component-${timestamp}.md`;
 
   // Create download
   const blob = new Blob([content], { type: 'text/markdown' });
@@ -109,15 +112,15 @@ function downloadToCursorFolder(data) {
 
   chrome.downloads.download({
     url: url,
-    filename: '.cursor/context/vue-grab-latest.md',
-    saveAs: false
+    filename: filename,
+    saveAs: true  // Let user choose location
   }, (downloadId) => {
     if (chrome.runtime.lastError) {
       console.error('Download error:', chrome.runtime.lastError);
       statusDiv.textContent = '✗ Download failed - check permissions';
       statusDiv.className = 'status inactive';
     } else {
-      statusDiv.textContent = '✓ Saved to .cursor/context/';
+      statusDiv.textContent = '✓ File saved!';
       statusDiv.className = 'status active';
       setTimeout(() => window.close(), 2000);
     }
@@ -133,18 +136,18 @@ function updateUI(isActive, hasData) {
     toggleBtn.classList.add('active');
     statusDiv.textContent = '✓ Active - Click any element';
     statusDiv.className = 'status active';
-    cursorBtn.style.display = 'none';
+    saveBtn.style.display = 'none';
   } else {
     toggleBtn.textContent = 'Start Grabbing';
     toggleBtn.classList.remove('active');
     statusDiv.textContent = 'Click the button to activate';
     statusDiv.className = 'status inactive';
 
-    // Show cursor button if we have data
+    // Show save button if we have data
     if (hasData) {
-      cursorBtn.style.display = 'block';
+      saveBtn.style.display = 'block';
     } else {
-      cursorBtn.style.display = 'none';
+      saveBtn.style.display = 'none';
     }
   }
 }
