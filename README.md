@@ -25,7 +25,7 @@ A browser extension that lets you click any Vue component on a webpage and extra
 2. Open Chrome/Edge and navigate to `chrome://extensions/`
 3. Enable "Developer mode" (toggle in top-right)
 4. Click "Load unpacked"
-5. Select the `vue-grab-extension` folder
+5. Select the `vue-grab` folder (the root of this repository)
 6. The extension icon should appear in your toolbar
 
 ### Firefox (Temporary)
@@ -33,7 +33,7 @@ A browser extension that lets you click any Vue component on a webpage and extra
 1. Clone or download this repository
 2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
 3. Click "Load Temporary Add-on"
-4. Select the `manifest.json` file from the `vue-grab-extension` folder
+4. Select the `manifest.json` file from the `vue-grab` folder
 
 ## Usage
 
@@ -198,18 +198,18 @@ Want to customize or extend Vue Grab?
 
 ```bash
 # Project structure
-vue-grab-extension/
+vue-grab/
 ├── manifest.json       # Extension configuration
 ├── popup.html         # Extension popup UI
 ├── popup.js          # Popup logic
 ├── content.js        # Main grabbing logic
 ├── content.css       # Styles for highlights/toasts
-└── icons/           # Extension icons (add your own!)
+└── icons/           # Extension icons
 ```
 
 ### TODO / Ideas
 
-- [ ] Add actual extension icons (currently placeholders)
+- [x] Add actual extension icons ✅
 - [x] Support for Pinia/Vuex state extraction ✅
 - [x] Export to Markdown files ✅
 - [x] Cursor Composer integration ✅
