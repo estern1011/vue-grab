@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "description": "Browser extension to extract Vue component context for AI coding assistants",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && cp -r icons dist/",
     "dev": "vite build --watch",
     "preview": "vite preview"
   },

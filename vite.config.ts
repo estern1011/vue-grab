@@ -13,5 +13,5 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
   },
-  publicDir: 'icons',
+  publicDir: false,
 });
