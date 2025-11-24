@@ -1,14 +1,11 @@
 import { VUE_GRAB_IDE_CONFIG } from './constants';
-import type { ComponentData, ContentScriptResponse } from './types';
+import type { ContentScriptResponse } from './types';
 
 const toggleBtn = document.getElementById('toggleBtn') as HTMLButtonElement;
 const ideSection = document.getElementById('ideSection') as HTMLDivElement;
 const ideSelect = document.getElementById('ideSelect') as HTMLSelectElement;
 const openIdeBtn = document.getElementById('openIdeBtn') as HTMLButtonElement;
 const statusDiv = document.getElementById('status') as HTMLDivElement;
-
-// Store the last component data for IDE opening
-let lastComponentFilePath: string | null = null;
 
 // Load saved editor preference
 chrome.storage.local.get(['selectedEditor'], (result) => {
@@ -82,15 +79,6 @@ function showError(message: string): void {
 sendMessageToTab('getState', (response) => {
   if (response) {
     updateUI(response.isActive ?? false, response.hasData ?? false);
-
-    // If we have data, get the file path for IDE opening
-    if (response.hasData) {
-      sendMessageToTab('getLastData', (dataResponse) => {
-        if (dataResponse && dataResponse.data) {
-          lastComponentFilePath = dataResponse.data.filePath;
-        }
-      });
-    }
   }
 });
 
@@ -143,13 +131,6 @@ openIdeBtn.addEventListener('click', () => {
       statusDiv.className = 'status error';
     }
   });
-});
-
-// Listen for download requests from content script (not used currently but kept for compatibility)
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'downloadFile') {
-    // Could add download functionality here if needed
-  }
 });
 
 function updateUI(isActive: boolean, hasData: boolean): void {

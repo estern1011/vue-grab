@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Vue Grab - Injected Script
  *
@@ -8,7 +7,7 @@
  * Architecture:
  * - content.js (content script) handles UI and user interaction
  * - injected.js (this file) accesses Vue internals and extracts component data
- * - Communication is via window.postMessage()
+ * - Communication uses a private DOM event bridge
  *
  * Message Types (content.js → injected.js):
  * - VUE_GRAB_GET_INFO: Get component info for a hovered element
@@ -27,6 +26,45 @@
  * - Vue 2: Uses __vue__ on DOM elements
  * - Fallback: Uses __VUE_DEVTOOLS_GLOBAL_HOOK__ for top-down traversal
  */
+
+interface BridgeHandshake {
+  bridgeId: string;
+  requestEvent: string;
+  responseEvent: string;
+}
+
+type BridgeRequestMessage =
+  | { type: 'VUE_GRAB_GET_INFO'; elementId: string }
+  | { type: 'VUE_GRAB_EXTRACT'; elementId: string }
+  | { type: 'VUE_GRAB_EXTRACT_CURRENT' }
+  | { type: 'VUE_GRAB_NAVIGATE_PARENT' }
+  | { type: 'VUE_GRAB_NAVIGATE_CHILD' };
+
+interface ComponentInfoPayload {
+  name: string;
+  hierarchy: string[];
+  currentIndex: number;
+}
+
+type BridgeResponseMessage =
+  | { type: 'VUE_GRAB_COMPONENT_DATA'; data: any; error?: string | null }
+  | { type: 'VUE_GRAB_COMPONENT_INFO'; info: ComponentInfoPayload | null }
+  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfoPayload | null; error?: string | null };
+
+interface Window {
+  __VUE_DEVTOOLS_GLOBAL_HOOK__?: any;
+  __VUE__?: any;
+  Vue?: any;
+  pinia?: any;
+  __VUE_QUERY_CLIENT__?: any;
+}
+
+interface HTMLElement {
+  __vueParentComponent?: any;
+  __vnode?: any;
+  __vue__?: any;
+}
+
 (function() {
   'use strict';
 
@@ -40,17 +78,35 @@
   const MAX_SERIALIZATION_DEPTH = 5;
   const MAX_VNODE_DEPTH = 50;
 
-  // Listen for messages from content script
-  window.addEventListener('message', (event) => {
-    // Security: Verify message source and origin to prevent malicious scripts
-    if (event.source !== window) return;
-    if (event.origin !== window.location.origin) return;
+  const bridgeElement = document.querySelector('[data-vue-grab-bridge="true"]') as HTMLElement | null;
 
-    if (event.data.type === 'VUE_GRAB_GET_INFO') {
-      const element = document.querySelector(`[data-vue-grab-id="${event.data.elementId}"]`);
+  if (!bridgeElement) {
+    console.error('Vue Grab: Unable to establish communication bridge.');
+    return;
+  }
+
+  const requestEvent = bridgeElement.getAttribute('data-request-event');
+  const responseEvent = bridgeElement.getAttribute('data-response-event');
+
+  if (!bridgeElement.id || !requestEvent || !responseEvent) {
+    console.error('Vue Grab: Bridge metadata missing. Cannot communicate with content script.');
+    return;
+  }
+
+  const handshake = {
+    bridgeId: bridgeElement.id,
+    requestEvent,
+    responseEvent
+  };
+
+  bridgeElement.addEventListener(handshake.requestEvent, (event) => {
+    const detail = (event as CustomEvent<BridgeRequestMessage>).detail;
+    if (!detail) return;
+
+    if (detail.type === 'VUE_GRAB_GET_INFO') {
+      const element = document.querySelector(`[data-vue-grab-id="${detail.elementId}"]`) as HTMLElement | null;
       if (element) {
         const info = getVueComponentInfo(element);
-        // Build component hierarchy for this element
         if (info) {
           currentComponentStack = buildComponentHierarchy(info.instance);
           currentStackIndex = currentComponentStack.length - 1;
@@ -58,17 +114,18 @@
           currentComponentStack = [];
           currentStackIndex = -1;
         }
-        window.postMessage({
+
+        emitResponse({
           type: 'VUE_GRAB_COMPONENT_INFO',
           info: info ? {
             name: info.name,
             hierarchy: currentComponentStack.map(c => c.name),
             currentIndex: currentStackIndex
           } : null
-        }, '*');
+        });
       }
-    } else if (event.data.type === 'VUE_GRAB_EXTRACT') {
-      const element = document.querySelector(`[data-vue-grab-id="${event.data.elementId}"]`);
+    } else if (detail.type === 'VUE_GRAB_EXTRACT') {
+      const element = document.querySelector(`[data-vue-grab-id="${detail.elementId}"]`) as HTMLElement | null;
       if (element) {
         const data = extractVueComponent(element);
         const vueStatus = detectVuePresence();
@@ -84,71 +141,77 @@
           }
         }
 
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_COMPONENT_DATA',
-          data: data,
-          error: error
-        }, '*');
+          data,
+          error
+        });
       }
-    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_PARENT') {
-      // Navigate to parent component in hierarchy
+    } else if (detail.type === 'VUE_GRAB_NAVIGATE_PARENT') {
       if (currentStackIndex > 0) {
         currentStackIndex--;
         const parentComponent = currentComponentStack[currentStackIndex];
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_NAVIGATION_RESULT',
           info: {
             name: parentComponent.name,
             hierarchy: currentComponentStack.map(c => c.name),
             currentIndex: currentStackIndex
           }
-        }, '*');
+        });
       } else {
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_NAVIGATION_RESULT',
           info: null,
           error: 'Already at root component'
-        }, '*');
+        });
       }
-    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_CHILD') {
-      // Navigate back to child component in hierarchy
+    } else if (detail.type === 'VUE_GRAB_NAVIGATE_CHILD') {
       if (currentStackIndex < currentComponentStack.length - 1) {
         currentStackIndex++;
         const childComponent = currentComponentStack[currentStackIndex];
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_NAVIGATION_RESULT',
           info: {
             name: childComponent.name,
             hierarchy: currentComponentStack.map(c => c.name),
             currentIndex: currentStackIndex
           }
-        }, '*');
+        });
       } else {
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_NAVIGATION_RESULT',
           info: null,
           error: 'Already at clicked element'
-        }, '*');
+        });
       }
-    } else if (event.data.type === 'VUE_GRAB_EXTRACT_CURRENT') {
-      // Extract the currently navigated component (not necessarily the clicked element)
+    } else if (detail.type === 'VUE_GRAB_EXTRACT_CURRENT') {
       if (currentStackIndex >= 0 && currentComponentStack[currentStackIndex]) {
         const componentInfo = currentComponentStack[currentStackIndex];
         const data = extractFromInstance(componentInfo.instance);
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_COMPONENT_DATA',
-          data: data,
+          data,
           error: data ? null : 'Could not extract component data'
-        }, '*');
+        });
       } else {
-        window.postMessage({
+        emitResponse({
           type: 'VUE_GRAB_COMPONENT_DATA',
           data: null,
           error: 'No component selected'
-        }, '*');
+        });
       }
     }
   });
+
+  function emitResponse(detail: BridgeResponseMessage): void {
+    const event = new CustomEvent(handshake.responseEvent, {
+      detail,
+      bubbles: false,
+      composed: false
+    });
+    bridgeElement.dispatchEvent(event);
+  }
 
   // Build hierarchy from root to current component
   function buildComponentHierarchy(instance) {

@@ -6,8 +6,7 @@ A browser extension that lets you click any Vue component on a webpage and extra
 
 - 🎯 **Click to Extract**: Click any element to grab its Vue component data
 - 📋 **Auto-Copy**: Automatically copies formatted component context to clipboard
-- 🎼 **Cursor Composer Integration**: Send extracted context directly to Cursor with one click
-- 📁 **File Export**: Saves to `.cursor/context/vue-grab-latest.md` for automatic context pickup
+- 🎼 **Cursor & Windsurf Links**: Send extracted context directly to your editor through deep links
 - 🗂️ **Pinia Store Detection**: Automatically detects and extracts Pinia store state, getters, and actions
 - 📦 **Vuex Store Detection**: Captures Vuex state, getters, mutations, and actions
 - 🔍 **TanStack Query Support**: Extracts active queries with their status, data, and metadata
@@ -44,15 +43,16 @@ A browser extension that lets you click any Vue component on a webpage and extra
 5. **Click** any element to extract its component data
 6. **Choose your workflow**:
    - The component data is automatically copied to your clipboard
-   - Click "Send to Cursor Composer" to save to `.cursor/context/vue-grab-latest.md`
+   - Hold `⌘/Ctrl` while clicking (or pressing `Enter`) to copy and open your editor via deep link
    - Paste into Claude Code chat to get contextual help!
 
-### Cursor Integration
+### Editor Deep Links
 
-After grabbing a component, click the "Send to Cursor Composer" button to:
-- Save the context to `.cursor/context/vue-grab-latest.md` in your Downloads folder
-- Move this file to your project's `.cursor/context/` directory for automatic pickup by Cursor
-- Optionally try deep linking with `cursor://` protocol (if configured)
+After grabbing a component, you can:
+- Hold `⌘/Ctrl` when clicking (or pressing `Enter`) to copy and immediately open the associated file in Cursor or Windsurf via their URL schemes
+- Re-open the popup and click **Open in Editor** to deep link to the captured file path later
+
+No local files are written—everything stays in your clipboard and editor.
 
 ## What Gets Extracted
 
@@ -178,14 +178,9 @@ toggleComplete, startEdit, saveEdit
 - Check browser console for any error messages
 - The extension tries multiple detection methods but may not work with all setups
 
-### "Send to Cursor" button not appearing
+### "Open in Editor" button not appearing
 - The button only appears after you've grabbed a component
-- Click "Start Grabbing" and select a component first
-
-### Download failed
-- Check that you've granted the extension "downloads" permission
-- The file will be saved to your Downloads folder as `.cursor/context/vue-grab-latest.md`
-- You may need to manually move it to your project's `.cursor/context/` directory
+- Click "Start Grabbing", capture a component, then reopen the popup
 
 ### Extension not working
 - Refresh the page after installing the extension
@@ -255,8 +250,7 @@ vue-grab/
 **Completed Features:**
 - [x] Add actual extension icons ✅
 - [x] Support for Pinia/Vuex state extraction ✅
-- [x] Export to Markdown files ✅
-- [x] Cursor Composer integration ✅
+- [x] Editor deep links for Cursor/Windsurf ✅
 - [x] TanStack Query/Vue Query support ✅
 - [x] Smart filtering to detect component usage ✅
 - [x] Vue Router route information ✅
