@@ -1,124 +1,170 @@
 const toggleBtn = document.getElementById('toggleBtn');
-const cursorBtn = document.getElementById('cursorBtn');
+const ideSection = document.getElementById('ideSection');
+const ideSelect = document.getElementById('ideSelect');
+const openIdeBtn = document.getElementById('openIdeBtn');
 const statusDiv = document.getElementById('status');
 
-// Check current state when popup opens
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  chrome.tabs.sendMessage(
-    tabs[0].id,
-    { action: 'getState' },
-    (response) => {
-      if (response) {
-        updateUI(response.isActive, response.hasData);
-      }
-    }
-  );
-});
-
-toggleBtn.addEventListener('click', () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.tabs.sendMessage(
-      tabs[0].id,
-      { action: 'toggle' },
-      (response) => {
-        if (response) {
-          updateUI(response.isActive, false);
-
-          // Close popup after activating
-          if (response.isActive) {
-            setTimeout(() => window.close(), 500);
-          }
-        }
-      }
-    );
-  });
-});
-
-cursorBtn.addEventListener('click', () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    chrome.tabs.sendMessage(
-      tabs[0].id,
-      { action: 'getLastData' },
-      (response) => {
-        if (response && response.data) {
-          downloadToCursorFolder(response.data);
-        }
-      }
-    );
-  });
-});
-
-// Listen for download requests from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'downloadFile') {
-    downloadToCursorFolder({ content: request.content, filename: request.filename });
+// IDE configurations with their URL schemes
+const IDE_CONFIG = {
+  cursor: {
+    name: 'Cursor',
+    scheme: 'cursor',
+    // Cursor uses cursor://file/path format
+    buildUrl: (filePath) => `cursor://file/${filePath || ''}`
+  },
+  windsurf: {
+    name: 'Windsurf',
+    scheme: 'windsurf',
+    // Windsurf uses windsurf://file/path format
+    buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
   }
-});
+};
 
-function downloadToCursorFolder(data) {
-  // Format the data if it's a component object
-  let content = data.content;
-  if (!content && data.componentName) {
-    // This is a component data object, we need to format it
-    // Since we don't have access to formatForClaudeCCode here, we'll send a message
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      chrome.tabs.sendMessage(
-        tabs[0].id,
-        { action: 'sendToCursor' },
-        (response) => {
-          if (response && response.success) {
-            statusDiv.textContent = '✓ Downloading context file...';
-            statusDiv.className = 'status active';
-          } else {
-            statusDiv.textContent = '✗ Failed to send to Cursor';
-            statusDiv.className = 'status inactive';
-          }
-        }
-      );
+// Store the last component data for IDE opening
+let lastComponentFilePath = null;
+
+// Helper to safely send messages to content script with error handling
+function sendMessageToTab(action, callback) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    // Validate we have a tab
+    if (!tabs || !tabs[0] || !tabs[0].id) {
+      showError('No active tab found');
+      return;
+    }
+
+    const tab = tabs[0];
+
+    // Check if this is a page where content scripts can't run
+    if (tab.url && (
+      tab.url.startsWith('chrome://') ||
+      tab.url.startsWith('chrome-extension://') ||
+      tab.url.startsWith('about:') ||
+      tab.url.startsWith('edge://') ||
+      tab.url.startsWith('devtools://') ||
+      tab.url === 'about:blank'
+    )) {
+      showError('Cannot run on browser internal pages');
+      return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { action }, (response) => {
+      // Check for connection errors
+      if (chrome.runtime.lastError) {
+        console.error('Connection error:', chrome.runtime.lastError.message);
+        showError('Content script not loaded. Try refreshing the page.');
+        return;
+      }
+
+      if (callback) {
+        callback(response);
+      }
     });
-    return;
-  }
-
-  // Create download
-  const blob = new Blob([content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-
-  chrome.downloads.download({
-    url: url,
-    filename: '.cursor/context/vue-grab-latest.md',
-    saveAs: false
-  }, (downloadId) => {
-    if (chrome.runtime.lastError) {
-      console.error('Download error:', chrome.runtime.lastError);
-      statusDiv.textContent = '✗ Download failed - check permissions';
-      statusDiv.className = 'status inactive';
-    } else {
-      statusDiv.textContent = '✓ Saved to .cursor/context/';
-      statusDiv.className = 'status active';
-      setTimeout(() => window.close(), 2000);
-    }
-    URL.revokeObjectURL(url);
   });
 }
 
+function showError(message) {
+  statusDiv.textContent = '⚠ ' + message;
+  statusDiv.className = 'status error';
+  toggleBtn.disabled = true;
+  toggleBtn.textContent = 'Not Available';
+}
+
+// Check current state when popup opens
+sendMessageToTab('getState', (response) => {
+  if (response) {
+    updateUI(response.isActive, response.hasData);
+
+    // If we have data, get the file path for IDE opening
+    if (response.hasData) {
+      sendMessageToTab('getLastData', (dataResponse) => {
+        if (dataResponse && dataResponse.data) {
+          lastComponentFilePath = dataResponse.data.filePath;
+        }
+      });
+    }
+  }
+});
+
+toggleBtn.addEventListener('click', () => {
+  if (toggleBtn.disabled) return;
+
+  sendMessageToTab('toggle', (response) => {
+    if (response) {
+      updateUI(response.isActive, false);
+
+      // Close popup after activating
+      if (response.isActive) {
+        setTimeout(() => window.close(), 500);
+      }
+    }
+  });
+});
+
+openIdeBtn.addEventListener('click', () => {
+  const selectedIde = ideSelect.value;
+  const config = IDE_CONFIG[selectedIde];
+
+  if (!config) {
+    statusDiv.textContent = '✗ Unknown IDE selected';
+    statusDiv.className = 'status error';
+    return;
+  }
+
+  // Get the latest data to ensure we have the file path
+  sendMessageToTab('getLastData', (response) => {
+    if (response && response.data) {
+      const filePath = response.data.filePath;
+      const url = config.buildUrl(filePath);
+
+      try {
+        // Try to open the IDE with the file
+        window.open(url, '_blank');
+        statusDiv.textContent = `✓ Opening in ${config.name}...`;
+        statusDiv.className = 'status active';
+
+        // Close popup after a short delay
+        setTimeout(() => window.close(), 1500);
+      } catch (e) {
+        console.error('Failed to open IDE:', e);
+        statusDiv.textContent = `✗ Could not open ${config.name}. Is it installed?`;
+        statusDiv.className = 'status error';
+      }
+    } else {
+      statusDiv.textContent = '✗ No component data available';
+      statusDiv.className = 'status error';
+    }
+  });
+});
+
+// Listen for download requests from content script (not used currently but kept for compatibility)
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'downloadFile') {
+    // Could add download functionality here if needed
+  }
+});
+
 function updateUI(isActive, hasData) {
+  toggleBtn.disabled = false;
+
   if (isActive) {
     toggleBtn.textContent = 'Stop Grabbing';
     toggleBtn.classList.add('active');
     statusDiv.textContent = '✓ Active - Click any element';
     statusDiv.className = 'status active';
-    cursorBtn.style.display = 'none';
+    ideSection.classList.remove('visible');
   } else {
     toggleBtn.textContent = 'Start Grabbing';
     toggleBtn.classList.remove('active');
     statusDiv.textContent = 'Click the button to activate';
     statusDiv.className = 'status inactive';
 
-    // Show cursor button if we have data
+    // Show IDE section if we have data
     if (hasData) {
-      cursorBtn.style.display = 'block';
+      ideSection.classList.add('visible');
+      statusDiv.textContent = '✓ Data copied! Open in IDE or paste anywhere.';
+      statusDiv.className = 'status active';
     } else {
-      cursorBtn.style.display = 'none';
+      ideSection.classList.remove('visible');
     }
   }
 }

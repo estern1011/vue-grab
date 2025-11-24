@@ -4,7 +4,50 @@ let hoveredElement = null;
 let activeIndicator = null;
 let lastComponentData = null;
 
-// Initialize
+// Inject script into page context to access Vue internals
+// Content scripts run in isolated world and can't access page JS variables directly
+function injectPageScript() {
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL('injected.js');
+  script.onload = function() {
+    this.remove();
+  };
+  (document.head || document.documentElement).appendChild(script);
+}
+
+// Inject script as soon as possible
+if (document.head || document.documentElement) {
+  injectPageScript();
+} else {
+  // Wait for DOM to be ready
+  document.addEventListener('DOMContentLoaded', injectPageScript);
+}
+
+// Listen for messages from injected script
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+
+  if (event.data.type === 'VUE_GRAB_COMPONENT_DATA') {
+    const componentData = event.data.data;
+    if (componentData) {
+      lastComponentData = componentData;
+      copyToClipboard(componentData);
+      showToast('✓ Component data copied to clipboard!', 'success');
+      deactivate();
+      isActive = false;
+    } else {
+      showToast(event.data.error || 'No Vue component found', 'error');
+    }
+  } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
+    // Response from hover detection
+    if (event.data.info && hoveredElement) {
+      hoveredElement.classList.add('vue-grab-highlight');
+      hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
+    }
+  }
+});
+
+// Initialize Chrome message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'toggle') {
     isActive = !isActive;
@@ -18,9 +61,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ isActive, hasData: lastComponentData !== null });
   } else if (request.action === 'getLastData') {
     sendResponse({ data: lastComponentData });
-  } else if (request.action === 'sendToCursor') {
+  } else if (request.action === 'formatAndDownload') {
     if (lastComponentData) {
-      sendToCursor(lastComponentData);
+      triggerDownload(lastComponentData);
       sendResponse({ success: true });
     } else {
       sendResponse({ success: false, error: 'No component data available' });
@@ -34,7 +77,7 @@ function activate() {
   document.addEventListener('mouseout', handleMouseOut);
   document.addEventListener('click', handleClick, true);
   document.addEventListener('keydown', handleKeyDown);
-  
+
   showActiveIndicator();
   showToast('Vue Grab activated! Click any element to extract its component.', 'success');
 }
@@ -44,34 +87,39 @@ function deactivate() {
   document.removeEventListener('mouseout', handleMouseOut);
   document.removeEventListener('click', handleClick, true);
   document.removeEventListener('keydown', handleKeyDown);
-  
+
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
     hoveredElement.removeAttribute('data-vue-component');
+    hoveredElement.removeAttribute('data-vue-grab-id');
   }
-  
+
   hideActiveIndicator();
 }
 
 function handleMouseOver(e) {
   if (!isActive) return;
-  
+
   hoveredElement = e.target;
-  
-  // Try to find Vue component info
-  const componentInfo = getVueComponentInfo(hoveredElement);
-  if (componentInfo) {
-    hoveredElement.classList.add('vue-grab-highlight');
-    hoveredElement.setAttribute('data-vue-component', componentInfo.name || 'Anonymous');
-  }
+
+  // Create a unique identifier for this element
+  const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+  hoveredElement.setAttribute('data-vue-grab-id', elementId);
+
+  // Ask injected script to find Vue component info
+  window.postMessage({
+    type: 'VUE_GRAB_GET_INFO',
+    elementId: elementId
+  }, '*');
 }
 
 function handleMouseOut(e) {
   if (!isActive) return;
-  
+
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
     hoveredElement.removeAttribute('data-vue-component');
+    hoveredElement.removeAttribute('data-vue-grab-id');
     hoveredElement = null;
   }
 }
@@ -83,17 +131,16 @@ function handleClick(e) {
   e.stopPropagation();
 
   const element = e.target;
-  const componentData = extractVueComponent(element);
 
-  if (componentData) {
-    lastComponentData = componentData;
-    copyToClipboard(componentData);
-    showToast('✓ Component data copied to clipboard!', 'success');
-    deactivate();
-    isActive = false;
-  } else {
-    showToast('No Vue component found on this element', 'error');
-  }
+  // Create a unique identifier for this element
+  const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+  element.setAttribute('data-vue-grab-id', elementId);
+
+  // Ask injected script to extract Vue component data
+  window.postMessage({
+    type: 'VUE_GRAB_EXTRACT',
+    elementId: elementId
+  }, '*');
 }
 
 function handleKeyDown(e) {
@@ -104,488 +151,9 @@ function handleKeyDown(e) {
   }
 }
 
-function getVueComponentInfo(element) {
-  // Try Vue 3 first
-  let instance = element.__vnode?.component;
-  
-  // Try alternative Vue 3 property
-  if (!instance) {
-    instance = element.__vueParentComponent;
-  }
-  
-  // Try Vue 2
-  if (!instance) {
-    instance = element.__vue__;
-  }
-  
-  // Walk up the DOM tree to find a Vue component
-  if (!instance) {
-    let parent = element.parentElement;
-    while (parent && !instance) {
-      instance = parent.__vnode?.component || parent.__vueParentComponent || parent.__vue__;
-      parent = parent.parentElement;
-    }
-  }
-  
-  if (!instance) return null;
-  
-  return {
-    name: getComponentName(instance),
-    instance
-  };
-}
-
-function extractVueComponent(element) {
-  const info = getVueComponentInfo(element);
-  if (!info) return null;
-
-  const instance = info.instance;
-
-  // Extract component data based on Vue version
-  const data = {
-    componentName: info.name,
-    filePath: null,
-    props: null,
-    data: null,
-    setupState: null,
-    computed: null,
-    methods: null,
-    template: null,
-    piniaStores: null,
-    vuexStore: null,
-    tanstackQueries: null,
-    element: {
-      tagName: element.tagName.toLowerCase(),
-      id: element.id || null,
-      classes: Array.from(element.classList),
-      attributes: getElementAttributes(element)
-    }
-  };
-  
-  // Vue 3
-  if (instance.type) {
-    data.filePath = instance.type.__file || null;
-    data.props = serializeData(instance.props);
-    data.setupState = serializeData(instance.setupState);
-    data.data = serializeData(instance.data);
-    data.template = instance.type.template || null;
-    
-    // Try to extract computed and methods
-    if (instance.proxy) {
-      const computedKeys = Object.keys(instance.proxy).filter(key => {
-        const descriptor = Object.getOwnPropertyDescriptor(instance.proxy, key);
-        return descriptor && typeof descriptor.get === 'function';
-      });
-      data.computed = computedKeys;
-      
-      const methodKeys = Object.keys(instance.type).filter(key => 
-        typeof instance.type[key] === 'function' && 
-        !key.startsWith('_') &&
-        key !== 'setup'
-      );
-      data.methods = methodKeys;
-    }
-  }
-  
-  // Vue 2
-  if (instance.$options) {
-    data.filePath = instance.$options.__file || null;
-    data.props = serializeData(instance.$props);
-    data.data = serializeData(instance.$data);
-    data.computed = Object.keys(instance.$options.computed || {});
-    data.methods = Object.keys(instance.$options.methods || {});
-    data.template = instance.$options.template || null;
-  }
-
-  // Extract store and query data
-  data.piniaStores = extractPiniaStores(instance);
-  data.vuexStore = extractVuexStore(instance);
-  data.tanstackQueries = extractTanStackQueries(instance);
-
-  return data;
-}
-
-function getComponentName(instance) {
-  // Vue 3
-  if (instance.type) {
-    return instance.type.name || 
-           instance.type.__name || 
-           instance.type.displayName ||
-           'AnonymousComponent';
-  }
-  
-  // Vue 2
-  if (instance.$options) {
-    return instance.$options.name || 
-           instance.$options._componentTag ||
-           'AnonymousComponent';
-  }
-  
-  return 'UnknownComponent';
-}
-
-function getElementAttributes(element) {
-  const attrs = {};
-  for (const attr of element.attributes) {
-    attrs[attr.name] = attr.value;
-  }
-  return attrs;
-}
-
-function extractPiniaStores(instance) {
-  try {
-    // Try to get Pinia instance from the component
-    let pinia = null;
-
-    // Vue 3 - try multiple ways to access Pinia
-    if (instance.appContext) {
-      pinia = instance.appContext.config.globalProperties.$pinia;
-    }
-
-    // Try getting from proxy
-    if (!pinia && instance.proxy) {
-      pinia = instance.proxy.$pinia;
-    }
-
-    // Try global Pinia (if available)
-    if (!pinia && typeof window !== 'undefined' && window.pinia) {
-      pinia = window.pinia;
-    }
-
-    if (!pinia || !pinia._s) {
-      return null;
-    }
-
-    const stores = [];
-    const componentCode = getComponentSourceCode(instance);
-
-    // Iterate through all registered stores
-    pinia._s.forEach((store, storeId) => {
-      const storeData = {
-        id: storeId,
-        state: serializeData(store.$state),
-        getters: {},
-        actions: [],
-        usedByComponent: 'unknown'
-      };
-
-      // Extract getters (computed properties on the store)
-      Object.keys(store).forEach(key => {
-        if (key.startsWith('_') || key.startsWith('$')) return;
-
-        const descriptor = Object.getOwnPropertyDescriptor(store, key);
-        if (descriptor && typeof descriptor.get === 'function') {
-          try {
-            storeData.getters[key] = serializeData(store[key]);
-          } catch (e) {
-            storeData.getters[key] = '[Error accessing getter]';
-          }
-        } else if (typeof store[key] === 'function') {
-          storeData.actions.push(key);
-        }
-      });
-
-      // Try to detect if this component uses this store
-      if (componentCode) {
-        const storeUsagePatterns = [
-          new RegExp(`use${storeId.charAt(0).toUpperCase() + storeId.slice(1)}Store`, 'i'),
-          new RegExp(`['"\`]${storeId}['"\`]`, 'i'),
-          new RegExp(`\\b${storeId}\\b`)
-        ];
-
-        const definitelyUsed = storeUsagePatterns.some(pattern => pattern.test(componentCode));
-        storeData.usedByComponent = definitelyUsed ? 'definitely' : 'potentially';
-      }
-
-      // Check if the component instance has a reference to this store
-      if (instance.setupState) {
-        const hasStoreRef = Object.values(instance.setupState).some(value => {
-          return value && value.$id === storeId;
-        });
-        if (hasStoreRef) {
-          storeData.usedByComponent = 'definitely';
-        }
-      }
-
-      stores.push(storeData);
-    });
-
-    return stores.length > 0 ? stores : null;
-  } catch (e) {
-    console.error('Error extracting Pinia stores:', e);
-    return null;
-  }
-}
-
-function extractVuexStore(instance) {
-  try {
-    let store = null;
-
-    // Vue 2 - $store is directly available
-    if (instance.$store) {
-      store = instance.$store;
-    }
-
-    // Vue 3 - try to get from proxy
-    if (!store && instance.proxy && instance.proxy.$store) {
-      store = instance.proxy.$store;
-    }
-
-    if (!store) {
-      return null;
-    }
-
-    const componentCode = getComponentSourceCode(instance);
-    const storeData = {
-      state: serializeData(store.state),
-      getters: {},
-      mutations: Object.keys(store._mutations || {}),
-      actions: Object.keys(store._actions || {}),
-      modules: Object.keys(store._modules?.root?._children || {}),
-      usedState: [],
-      usedGetters: []
-    };
-
-    // Extract getter values
-    Object.keys(store.getters || {}).forEach(key => {
-      try {
-        storeData.getters[key] = serializeData(store.getters[key]);
-      } catch (e) {
-        storeData.getters[key] = '[Error accessing getter]';
-      }
-    });
-
-    // Try to detect which state and getters this component uses
-    if (componentCode) {
-      // Look for $store.state.xxx patterns
-      const statePattern = /\$store\.state\.(\w+)/g;
-      let match;
-      while ((match = statePattern.exec(componentCode)) !== null) {
-        if (!storeData.usedState.includes(match[1])) {
-          storeData.usedState.push(match[1]);
-        }
-      }
-
-      // Look for $store.getters.xxx or $store.getters['xxx'] patterns
-      const gettersPattern = /\$store\.getters\.(\w+)|\$store\.getters\[['"](\w+)['"]\]/g;
-      while ((match = gettersPattern.exec(componentCode)) !== null) {
-        const getter = match[1] || match[2];
-        if (getter && !storeData.usedGetters.includes(getter)) {
-          storeData.usedGetters.push(getter);
-        }
-      }
-
-      // Look for mapState, mapGetters usage
-      if (componentCode.includes('mapState') || componentCode.includes('mapGetters')) {
-        storeData.likelyUsesMappedHelpers = true;
-      }
-    }
-
-    return storeData;
-  } catch (e) {
-    console.error('Error extracting Vuex store:', e);
-    return null;
-  }
-}
-
-function extractTanStackQueries(instance) {
-  try {
-    let queryClient = null;
-
-    // Try to get QueryClient from the component
-    if (instance.proxy && instance.proxy.$queryClient) {
-      queryClient = instance.proxy.$queryClient;
-    }
-
-    // Try global access (Vue Query usually provides a global hook)
-    if (!queryClient && typeof window !== 'undefined') {
-      // Try to find it through app context
-      if (instance.appContext?.config?.globalProperties?.$queryClient) {
-        queryClient = instance.appContext.config.globalProperties.$queryClient;
-      }
-
-      // Try window (some setups expose it)
-      if (!queryClient && window.__VUE_QUERY_CLIENT__) {
-        queryClient = window.__VUE_QUERY_CLIENT__;
-      }
-    }
-
-    if (!queryClient || !queryClient.getQueryCache) {
-      return null;
-    }
-
-    const queryCache = queryClient.getQueryCache();
-    const allQueries = queryCache.getAll();
-
-    if (!allQueries || allQueries.length === 0) {
-      return null;
-    }
-
-    const componentCode = getComponentSourceCode(instance);
-    const queries = [];
-
-    allQueries.forEach(query => {
-      const queryData = {
-        queryKey: query.queryKey,
-        queryHash: query.queryHash,
-        state: {
-          status: query.state.status,
-          fetchStatus: query.state.fetchStatus,
-          dataUpdateCount: query.state.dataUpdateCount,
-          errorUpdateCount: query.state.errorUpdateCount
-        },
-        data: serializeData(query.state.data),
-        error: query.state.error ? String(query.state.error) : null,
-        lastUpdated: query.state.dataUpdatedAt ? new Date(query.state.dataUpdatedAt).toISOString() : null,
-        usedByComponent: 'unknown'
-      };
-
-      // Try to detect if this component uses this query
-      if (componentCode && Array.isArray(query.queryKey)) {
-        const keyString = JSON.stringify(query.queryKey);
-        const firstKey = query.queryKey[0];
-
-        // Check if the query key appears in component code
-        if (componentCode.includes(keyString) ||
-            (typeof firstKey === 'string' && componentCode.includes(firstKey))) {
-          queryData.usedByComponent = 'definitely';
-        } else {
-          queryData.usedByComponent = 'potentially';
-        }
-      }
-
-      // Check if component setupState has a reference to this query
-      if (instance.setupState) {
-        const hasQueryRef = Object.values(instance.setupState).some(value => {
-          return value && value.queryKey &&
-                 JSON.stringify(value.queryKey) === JSON.stringify(query.queryKey);
-        });
-        if (hasQueryRef) {
-          queryData.usedByComponent = 'definitely';
-        }
-      }
-
-      queries.push(queryData);
-    });
-
-    // Sort queries: definitely used first, then potentially, then unknown
-    queries.sort((a, b) => {
-      const order = { definitely: 0, potentially: 1, unknown: 2 };
-      return order[a.usedByComponent] - order[b.usedByComponent];
-    });
-
-    return queries.length > 0 ? queries : null;
-  } catch (e) {
-    console.error('Error extracting TanStack queries:', e);
-    return null;
-  }
-}
-
-function getComponentSourceCode(instance) {
-  try {
-    // Try to get the component's setup function or render function as string
-    if (instance.type) {
-      if (instance.type.setup) {
-        return instance.type.setup.toString();
-      }
-      if (instance.type.render) {
-        return instance.type.render.toString();
-      }
-      // Try to get all methods
-      return JSON.stringify(instance.type);
-    }
-
-    // Vue 2 - try to get from options
-    if (instance.$options) {
-      const code = [];
-      if (instance.$options.setup) {
-        code.push(instance.$options.setup.toString());
-      }
-      if (instance.$options.methods) {
-        code.push(JSON.stringify(instance.$options.methods));
-      }
-      if (instance.$options.computed) {
-        code.push(JSON.stringify(instance.$options.computed));
-      }
-      return code.join('\n');
-    }
-
-    return null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function serializeData(obj) {
-  if (!obj) return null;
-  
-  try {
-    // Create a deep copy and handle circular references
-    const seen = new WeakSet();
-    
-    const serialize = (value, depth = 0) => {
-      // Limit depth to prevent huge outputs
-      if (depth > 5) return '[Deep Object]';
-      
-      if (value === null) return null;
-      if (value === undefined) return undefined;
-      
-      // Handle primitives
-      if (typeof value !== 'object' && typeof value !== 'function') {
-        return value;
-      }
-      
-      // Handle functions
-      if (typeof value === 'function') {
-        return `[Function: ${value.name || 'anonymous'}]`;
-      }
-      
-      // Handle circular references
-      if (seen.has(value)) {
-        return '[Circular]';
-      }
-      seen.add(value);
-      
-      // Handle arrays
-      if (Array.isArray(value)) {
-        return value.map(item => serialize(item, depth + 1));
-      }
-      
-      // Handle DOM elements
-      if (value instanceof HTMLElement) {
-        return `[HTMLElement: ${value.tagName.toLowerCase()}]`;
-      }
-      
-      // Handle dates
-      if (value instanceof Date) {
-        return value.toISOString();
-      }
-      
-      // Handle objects
-      const result = {};
-      for (const key in value) {
-        // Skip internal Vue properties
-        if (key.startsWith('_') || key.startsWith('$')) continue;
-        
-        try {
-          result[key] = serialize(value[key], depth + 1);
-        } catch (e) {
-          result[key] = '[Unserializable]';
-        }
-      }
-      return result;
-    };
-    
-    return serialize(obj);
-  } catch (e) {
-    console.error('Serialization error:', e);
-    return { error: 'Could not serialize data' };
-  }
-}
-
 function copyToClipboard(data) {
   const formatted = formatForClaudeCCode(data);
-  
+
   // Use modern clipboard API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(formatted).catch(err => {
@@ -759,7 +327,7 @@ ${data.template}
   }
 
   output += `\n---
-*Generated by Vue Grab for Claude Code*
+*Generated by Vue Grab*
 `;
 
   return output;
@@ -770,7 +338,7 @@ function showToast(message, type = 'success') {
   toast.className = `vue-grab-toast ${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
-  
+
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
@@ -794,32 +362,17 @@ function hideActiveIndicator() {
   }
 }
 
-function sendToCursor(componentData) {
+function triggerDownload(componentData) {
   const formatted = formatForClaudeCCode(componentData);
+  const componentName = componentData.componentName || 'component';
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
-  // Create a blob from the formatted data
-  const blob = new Blob([formatted], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-
-  // Try to trigger download via the extension's background script
-  // This will be handled by the popup
+  // Trigger download via the extension popup
   chrome.runtime.sendMessage({
     action: 'downloadFile',
     content: formatted,
-    filename: 'vue-grab-latest.md'
+    filename: `${componentName}-${timestamp}.md`
   });
 
-  // Also try deep linking (may not work due to permissions)
-  try {
-    const filePath = componentData.filePath || 'component';
-    const encodedContext = encodeURIComponent(formatted);
-    const cursorUrl = `cursor://file/${filePath}?composer=true&context=${encodedContext}`;
-
-    // Try to open in a new tab (will fail if protocol not registered)
-    window.open(cursorUrl, '_blank');
-  } catch (e) {
-    console.log('Deep linking not available:', e);
-  }
-
-  showToast('Sending to Cursor Composer...', 'success');
+  showToast('Downloading component context...', 'success');
 }

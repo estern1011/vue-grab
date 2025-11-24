@@ -9,20 +9,20 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
     }
-    
+
     h2 {
       margin: 0 0 12px 0;
       font-size: 16px;
       color: #333;
     }
-    
+
     p {
       margin: 0 0 16px 0;
       font-size: 13px;
       color: #666;
       line-height: 1.5;
     }
-    
+
     button {
       width: 100%;
       padding: 10px;
@@ -33,35 +33,67 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-    
+
     #toggleBtn {
       background: #42b883;
       color: white;
     }
-    
+
     #toggleBtn:hover {
       background: #35a372;
     }
-    
+
     #toggleBtn.active {
       background: #e74c3c;
     }
-    
+
     #toggleBtn.active:hover {
       background: #c0392b;
     }
 
-    #cursorBtn {
-      background: #007ACC;
-      color: white;
-      margin-top: 8px;
+    .ide-section {
+      margin-top: 12px;
+      display: none;
     }
 
-    #cursorBtn:hover {
+    .ide-section.visible {
+      display: block;
+    }
+
+    .ide-row {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    #ideSelect {
+      flex: 1;
+      padding: 10px;
+      font-size: 14px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+    }
+
+    #ideSelect:focus {
+      outline: none;
+      border-color: #42b883;
+    }
+
+    #openIdeBtn {
+      width: auto;
+      padding: 10px 16px;
+      background: #007ACC;
+      color: white;
+      white-space: nowrap;
+    }
+
+    #openIdeBtn:hover {
       background: #005A9E;
     }
 
-    #cursorBtn:disabled {
+    #openIdeBtn:disabled {
       background: #cccccc;
       cursor: not-allowed;
     }
@@ -73,17 +105,27 @@
       font-size: 12px;
       text-align: center;
     }
-    
+
     .status.inactive {
       background: #f8f9fa;
       color: #666;
     }
-    
+
     .status.active {
       background: #d4edda;
       color: #155724;
     }
-    
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    button:disabled {
+      background: #cccccc !important;
+      cursor: not-allowed;
+    }
+
     .keyboard-hint {
       margin-top: 12px;
       padding: 8px;
@@ -97,10 +139,19 @@
 </head>
 <body>
   <h2>🎯 Vue Grab</h2>
-  <p>Click any Vue component on the page to extract its context for Claude Code.</p>
+  <p>Click any Vue component to extract its context. Data is copied to clipboard automatically.</p>
 
   <button id="toggleBtn">Start Grabbing</button>
-  <button id="cursorBtn" style="display: none;">Send to Cursor Composer</button>
+
+  <div id="ideSection" class="ide-section">
+    <div class="ide-row">
+      <select id="ideSelect">
+        <option value="cursor">Cursor</option>
+        <option value="windsurf">Windsurf</option>
+      </select>
+      <button id="openIdeBtn">Open</button>
+    </div>
+  </div>
 
   <div id="status" class="status inactive">
     Click the button to activate
@@ -109,7 +160,7 @@
   <div class="keyboard-hint">
     Press <strong>Esc</strong> to cancel
   </div>
-  
+
   <script src="popup.js"></script>
 </body>
 </html>
