@@ -178,52 +178,57 @@
 
   function getVueComponentInfo(element) {
     let instance = null;
+    let allCandidates = [];
 
-    // Strategy 1: Walk up DOM to find the IMMEDIATE component that owns this element
-    // This is more reliable than top-down traversal for finding the closest component
+    // Strategy 1: Walk up DOM to collect ALL components we find
     let currentEl = element;
     let depth = 0;
     const maxDepth = 100;
 
     while (currentEl && depth < maxDepth) {
+      let foundInstance = null;
+
       // Check for Vue 3 component on this element
       if (currentEl.__vueParentComponent) {
-        instance = currentEl.__vueParentComponent;
-        break;
+        foundInstance = currentEl.__vueParentComponent;
       }
-
       // Check for vnode with component
-      if (currentEl.__vnode?.component) {
-        instance = currentEl.__vnode.component;
-        break;
+      else if (currentEl.__vnode?.component) {
+        foundInstance = currentEl.__vnode.component;
       }
-
       // Check for Vue 2 component
-      if (currentEl.__vue__) {
-        instance = currentEl.__vue__;
-        break;
+      else if (currentEl.__vue__) {
+        foundInstance = currentEl.__vue__;
+      }
+      // Check fiber-like properties
+      else if (currentEl._vnode?.component) {
+        foundInstance = currentEl._vnode.component;
       }
 
-      // Check fiber-like properties
-      if (currentEl._vnode?.component) {
-        instance = currentEl._vnode.component;
-        break;
+      if (foundInstance && !allCandidates.includes(foundInstance)) {
+        allCandidates.push(foundInstance);
       }
 
       currentEl = currentEl.parentElement;
       depth++;
     }
 
-    // Strategy 2: If DOM walking finds a component, verify it's the deepest one
-    // by checking if any child component's element matches better
-    if (instance) {
-      const deeperInstance = findDeepestChildContaining(instance, element);
-      if (deeperInstance && deeperInstance !== instance) {
-        instance = deeperInstance;
+    // The first candidate (closest to element) is our starting point
+    if (allCandidates.length > 0) {
+      instance = allCandidates[0];
+
+      // But also check if any of the parent candidates have child components
+      // that contain our target element and are deeper
+      for (const candidate of allCandidates) {
+        const deeperInstance = findDeepestChildContaining(candidate, element, new Set());
+        if (deeperInstance) {
+          instance = deeperInstance;
+          break; // Found the deepest, no need to check more parents
+        }
       }
     }
 
-    // Strategy 3: Use DevTools hook as fallback for top-down search
+    // Strategy 2: Use DevTools hook for top-down search if DOM walking failed
     if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
       const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
       if (hook.apps && hook.apps.size > 0) {
@@ -263,45 +268,81 @@
   // Get all immediate child components of an instance
   function getChildComponents(instance) {
     const children = [];
-    const visited = new Set();
+    const visitedVnodes = new Set();
+    const visitedInstances = new Set();
 
-    function collectFromVNode(vnode) {
-      if (!vnode || visited.has(vnode)) return;
-      visited.add(vnode);
+    function collectFromVNode(vnode, depth = 0) {
+      if (!vnode || depth > 50) return;
 
-      // If this vnode is a component, add it
-      if (vnode.component && !children.includes(vnode.component)) {
-        children.push(vnode.component);
-        return; // Don't traverse into component's children here
+      // Handle arrays of vnodes
+      if (Array.isArray(vnode)) {
+        for (const v of vnode) {
+          collectFromVNode(v, depth);
+        }
+        return;
       }
 
-      // Traverse children
-      if (Array.isArray(vnode.children)) {
-        for (const child of vnode.children) {
-          if (child && typeof child === 'object') {
-            collectFromVNode(child);
+      // Skip non-objects
+      if (typeof vnode !== 'object') return;
+
+      // Skip already visited
+      if (visitedVnodes.has(vnode)) return;
+      visitedVnodes.add(vnode);
+
+      // If this vnode has a component instance, add it
+      if (vnode.component && !visitedInstances.has(vnode.component)) {
+        visitedInstances.add(vnode.component);
+        children.push(vnode.component);
+        // Don't traverse into component's internal tree - we want immediate children only
+        return;
+      }
+
+      // Traverse children array
+      if (vnode.children) {
+        if (Array.isArray(vnode.children)) {
+          for (const child of vnode.children) {
+            collectFromVNode(child, depth + 1);
           }
+        } else if (typeof vnode.children === 'object') {
+          // Could be a single vnode
+          collectFromVNode(vnode.children, depth + 1);
         }
       }
 
-      // Traverse dynamic children
-      if (Array.isArray(vnode.dynamicChildren)) {
+      // Traverse dynamic children (optimized path in Vue 3)
+      if (vnode.dynamicChildren && Array.isArray(vnode.dynamicChildren)) {
         for (const child of vnode.dynamicChildren) {
-          if (child && typeof child === 'object') {
-            collectFromVNode(child);
-          }
+          collectFromVNode(child, depth + 1);
+        }
+      }
+
+      // Check for component in shapeFlag (Vue 3 internal)
+      if (vnode.shapeFlag && vnode.component) {
+        if (!visitedInstances.has(vnode.component)) {
+          visitedInstances.add(vnode.component);
+          children.push(vnode.component);
         }
       }
     }
 
-    // Vue 3: traverse subTree
+    // Vue 3: traverse subTree (the rendered vnode tree)
     if (instance.subTree) {
       collectFromVNode(instance.subTree);
     }
 
-    // Vue 2: use $children
-    if (instance.$children) {
-      children.push(...instance.$children);
+    // Also check the vnode itself
+    if (instance.vnode) {
+      collectFromVNode(instance.vnode);
+    }
+
+    // Vue 2: use $children directly
+    if (instance.$children && Array.isArray(instance.$children)) {
+      for (const child of instance.$children) {
+        if (!visitedInstances.has(child)) {
+          visitedInstances.add(child);
+          children.push(child);
+        }
+      }
     }
 
     return children;

@@ -76,6 +76,12 @@ window.addEventListener('message', (event) => {
   if (event.source !== window) return;
 
   if (event.data.type === 'VUE_GRAB_COMPONENT_DATA') {
+    // Clear extraction timeout
+    if (window._vueGrabExtractionTimeout) {
+      clearTimeout(window._vueGrabExtractionTimeout);
+      window._vueGrabExtractionTimeout = null;
+    }
+
     const componentData = event.data.data;
     if (componentData) {
       lastComponentData = componentData;
@@ -96,8 +102,11 @@ window.addEventListener('message', (event) => {
       deactivate();
       isActive = false;
     } else {
+      // Extraction failed - show error and deactivate
       showToast(event.data.error || 'No Vue component found', 'error');
       pendingAction = null;
+      deactivate();
+      isActive = false;
     }
   } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
     // Response from hover detection
@@ -248,11 +257,29 @@ function handleClick(e) {
   }
 
   // Ensure we have the clicked element (in case mouseout fired)
-  if (!hoveredElement && e.target) {
-    hoveredElement = e.target;
+  const clickedElement = e.target;
+  if (!hoveredElement && clickedElement) {
+    hoveredElement = clickedElement;
+  }
+
+  // Always ensure the element has an ID for extraction
+  if (hoveredElement && !hoveredElement.getAttribute('data-vue-grab-id')) {
     const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
   }
+
+  // Set a timeout to deactivate even if extraction fails
+  const extractionTimeout = setTimeout(() => {
+    if (isActive) {
+      showToast('Extraction timed out. Try again.', 'error');
+      pendingAction = null;
+      deactivate();
+      isActive = false;
+    }
+  }, 3000);
+
+  // Store timeout ID so we can clear it on successful extraction
+  window._vueGrabExtractionTimeout = extractionTimeout;
 
   extractCurrentComponent();
 }
@@ -293,11 +320,13 @@ function extractCurrentComponent() {
     return;
   }
 
-  // Otherwise extract from the hovered element
+  // Otherwise extract from the hovered/clicked element
   if (hoveredElement) {
-    const elementId = hoveredElement.getAttribute('data-vue-grab-id') ||
-                      'vue-grab-' + Math.random().toString(36).substr(2, 9);
-    hoveredElement.setAttribute('data-vue-grab-id', elementId);
+    let elementId = hoveredElement.getAttribute('data-vue-grab-id');
+    if (!elementId) {
+      elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+      hoveredElement.setAttribute('data-vue-grab-id', elementId);
+    }
     window.postMessage({
       type: 'VUE_GRAB_EXTRACT',
       elementId: elementId
@@ -305,7 +334,11 @@ function extractCurrentComponent() {
     return;
   }
 
-  // No element to extract from - show error and deactivate
+  // No element to extract from - clear timeout and show error
+  if (window._vueGrabExtractionTimeout) {
+    clearTimeout(window._vueGrabExtractionTimeout);
+    window._vueGrabExtractionTimeout = null;
+  }
   showToast('No element selected. Try hovering over a component first.', 'error');
   pendingAction = null;
   deactivate();
