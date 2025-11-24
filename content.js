@@ -403,18 +403,22 @@ function fallbackCopy(text) {
 }
 
 function formatForClaudeCCode(data) {
+  // Handle element info safely (may be null when extracting from hierarchy navigation)
+  const elementInfo = data.element
+    ? `## Element
+- **Tag**: <${data.element.tagName}>
+- **ID**: ${data.element.id || 'None'}
+- **Classes**: ${data.element.classes?.join(', ') || 'None'}
+`
+    : '';
+
   let output = `# Vue Component Context
 
 ## Component Information
 - **Name**: ${data.componentName}
 - **File**: ${data.filePath || 'Unknown'}
 
-## Element
-- **Tag**: <${data.element.tagName}>
-- **ID**: ${data.element.id || 'None'}
-- **Classes**: ${data.element.classes.join(', ') || 'None'}
-
-## Props
+${elementInfo}## Props
 \`\`\`json
 ${JSON.stringify(data.props, null, 2)}
 \`\`\`
