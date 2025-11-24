@@ -194,32 +194,89 @@ toggleComplete, startEdit, saveEdit
 
 ## Development
 
-Want to customize or extend Vue Grab?
+Vue Grab is built with TypeScript for type safety and better developer experience.
+
+### Setup
 
 ```bash
-# Project structure
-vue-grab/
-├── manifest.json       # Extension configuration
-├── popup.html         # Extension popup UI
-├── popup.js          # Popup logic
-├── content.js        # Main grabbing logic
-├── content.css       # Styles for highlights/toasts
-└── icons/           # Extension icons
+# Install dependencies
+npm install
+
+# Build the extension
+npm run build
+
+# Watch mode for development (auto-rebuild on file changes)
+npm run watch
 ```
+
+### Project Structure
+
+```bash
+vue-grab/
+├── src/                # TypeScript source files
+│   ├── constants.ts   # Shared configuration constants
+│   ├── types.ts       # TypeScript type definitions
+│   ├── popup.ts       # Popup logic
+│   ├── content.ts     # Main grabbing logic (content script)
+│   ├── content.css    # Styles for highlights/toasts
+│   └── injected.ts    # Vue internals access (page context)
+├── dist/              # Compiled JavaScript (load this in browser)
+├── manifest.json      # Extension configuration
+├── popup.html         # Extension popup UI
+├── icons/             # Extension icons
+├── package.json       # Dependencies and scripts
+└── tsconfig.json      # TypeScript configuration
+```
+
+### Build Scripts
+
+- `npm run build` - Compile TypeScript and copy assets to dist/
+- `npm run watch` - Watch mode for development
+- `npm run clean` - Remove dist/ directory
+- `npm run rebuild` - Clean and rebuild from scratch
+
+### Loading the Extension
+
+1. Run `npm run build` to compile TypeScript
+2. Open Chrome/Edge and navigate to `chrome://extensions/`
+3. Enable "Developer mode"
+4. Click "Load unpacked"
+5. Select the `dist/` folder (not the root folder!)
+
+### Making Changes
+
+1. Edit TypeScript files in `src/`
+2. Run `npm run watch` for auto-compilation
+3. Reload the extension in `chrome://extensions/`
+4. Refresh the page you're testing on
 
 ### TODO / Ideas
 
+**Completed Features:**
 - [x] Add actual extension icons ✅
 - [x] Support for Pinia/Vuex state extraction ✅
 - [x] Export to Markdown files ✅
 - [x] Cursor Composer integration ✅
 - [x] TanStack Query/Vue Query support ✅
 - [x] Smart filtering to detect component usage ✅
+- [x] Vue Router route information ✅
+- [x] Provide/Inject values extraction ✅
+- [x] Emitted events detection ✅
+- [x] Slots extraction ✅
+- [x] Component hierarchy navigation (Alt+↑↓) ✅
+
+**Future Ideas:**
 - [ ] Direct integration with Claude Code API
-- [ ] Vue Router route information
-- [ ] Component hierarchy visualization
+- [ ] Enhanced component hierarchy visualization
 - [ ] Filter sensitive data (passwords, tokens, etc.)
 - [ ] Background script for better deep linking support
+- [ ] Publish to Chrome Web Store
+- [ ] Firefox Add-ons distribution
+
+**Recently Completed:**
+- [x] Full TypeScript conversion ✅
+- [x] Build system with watch mode ✅
+- [x] Comprehensive type definitions ✅
 
 ## Contributing
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Vue Grab - Injected Script
  *
@@ -506,7 +507,7 @@
     data.element = {
       tagName: element.tagName.toLowerCase(),
       id: element.id || null,
-      classes: Array.from(element.classList).filter(c => !c.startsWith('vue-grab')),
+      classes: Array.from(element.classList).filter(c => !(c as any).startsWith('vue-grab')),
       attributes: getElementAttributes(element)
     };
 
@@ -843,14 +844,14 @@
         };
 
         if (vnode.props && Object.keys(vnode.props).length > 0) {
-          nodeInfo.props = serializeData(vnode.props);
+          nodeInfo.props = serializeData((vnode as any).props);
         }
 
         if (vnode.children) {
           if (typeof vnode.children === 'string') {
-            nodeInfo.content = vnode.children;
+            (nodeInfo as any).content = vnode.children;
           } else if (Array.isArray(vnode.children)) {
-            nodeInfo.children = serializeVNodes(vnode.children);
+            (nodeInfo as any).children = serializeVNodes(vnode.children);
           }
         }
 
@@ -864,15 +865,15 @@
         };
 
         if (vnode.data?.attrs) {
-          nodeInfo.props = serializeData(vnode.data.attrs);
+          (nodeInfo as any).props = serializeData(vnode.data.attrs);
         }
 
         if (vnode.children) {
-          nodeInfo.children = serializeVNodes(vnode.children);
+          (nodeInfo as any).children = serializeVNodes(vnode.children);
         }
 
         if (vnode.text) {
-          nodeInfo.content = vnode.text;
+          (nodeInfo as any).content = vnode.text;
         }
 
         result.push(nodeInfo);
@@ -973,7 +974,7 @@
 
         if (instance.setupState) {
           const hasStoreRef = Object.values(instance.setupState).some(value => {
-            return value && value.$id === storeId;
+            return value && (value as any).$id === storeId;
           });
           if (hasStoreRef) {
             storeData.usedByComponent = 'definitely';
@@ -1043,7 +1044,7 @@
         }
 
         if (componentCode.includes('mapState') || componentCode.includes('mapGetters')) {
-          storeData.likelyUsesMappedHelpers = true;
+          (storeData as any).likelyUsesMappedHelpers = true;
         }
       }
 
@@ -1116,8 +1117,8 @@
 
         if (instance.setupState) {
           const hasQueryRef = Object.values(instance.setupState).some(value => {
-            return value && value.queryKey &&
-                   JSON.stringify(value.queryKey) === JSON.stringify(query.queryKey);
+            return value && (value as any).queryKey &&
+                   JSON.stringify((value as any).queryKey) === JSON.stringify(query.queryKey);
           });
           if (hasQueryRef) {
             queryData.usedByComponent = 'definitely';

@@ -3,48 +3,44 @@
  *
  * This is the main content script that runs in the extension's isolated world.
  * It handles all UI elements and user interaction.
- *
- * Features:
- * - Activation: Cmd+C (when no text selected) activates grab mode
- * - Hover: Shows component name floating label and highlight outline
- * - Click/Enter: Extracts component data to clipboard
- * - Cmd+Click/Enter: Also opens component file in configured editor
- * - Alt+Arrow: Navigate component hierarchy
- * - Escape: Deactivate
- *
- * Communication with injected.js:
- * - Posts messages to request component info/extraction
- * - Receives responses with component data
- * - See injected.js header for message type documentation
  */
+
+import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
+import type { ComponentData, ComponentInfo, MessageFromInjected } from './types';
+
+// Extend Window interface for our custom properties
+declare global {
+  interface Window {
+    _vueGrabExtractionTimeout?: number;
+  }
+}
 
 // State
 let isActive = false;
-let hoveredElement = null;
-let activeIndicator = null;
-let lastComponentData = null;
-let currentHierarchy = null;
+let hoveredElement: HTMLElement | null = null;
+let activeIndicator: HTMLElement | null = null;
+let lastComponentData: ComponentData | null = null;
+let currentHierarchy: string[] | null = null;
 let currentHierarchyIndex = -1;
-let breadcrumbElement = null;
-let floatingLabel = null; // New: floating label element
+let breadcrumbElement: HTMLElement | null = null;
+let floatingLabel: HTMLElement | null = null;
 let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
 // Load saved editor preference
 if (chrome.storage && chrome.storage.local) {
   chrome.storage.local.get(['selectedEditor'], (result) => {
     if (result.selectedEditor) {
-      selectedEditor = result.selectedEditor;
+      selectedEditor = result.selectedEditor as string;
     }
   });
 }
 
 // Inject script into page context to access Vue internals
-// Content scripts run in isolated world and can't access page JS variables directly
-function injectPageScript() {
+function injectPageScript(): void {
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('injected.js');
   script.onload = function() {
-    this.remove();
+    (this as any).remove();
   };
   (document.head || document.documentElement).appendChild(script);
 }
@@ -53,26 +49,21 @@ function injectPageScript() {
 if (document.head || document.documentElement) {
   injectPageScript();
 } else {
-  // Wait for DOM to be ready
   document.addEventListener('DOMContentLoaded', injectPageScript);
 }
 
 // Track pending action for keyboard shortcuts
-let pendingAction = null; // 'copy' or 'editor'
+let pendingAction: 'copy' | 'editor' | null = null;
 
 // Global keyboard listener for activation shortcut (⌘C / Ctrl+C)
-// This works even when grab mode is not active
 document.addEventListener('keydown', handleGlobalKeyDown, true);
 
-function handleGlobalKeyDown(e) {
-  // ⌘C or Ctrl+C to activate grab mode (only when not already active)
+function handleGlobalKeyDown(e: KeyboardEvent): void {
   if (!isActive && (e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey) {
-    // Don't interfere with text selection copy
     const selection = window.getSelection();
     if (selection && selection.toString().length > 0) {
-      return; // Let normal copy happen
+      return;
     }
-
     e.preventDefault();
     e.stopPropagation();
     isActive = true;
@@ -81,28 +72,24 @@ function handleGlobalKeyDown(e) {
 }
 
 // Listen for messages from injected script
-window.addEventListener('message', (event) => {
+window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) => {
   if (event.source !== window) return;
 
   if (event.data.type === 'VUE_GRAB_COMPONENT_DATA') {
-    // Clear extraction timeout
     if (window._vueGrabExtractionTimeout) {
       clearTimeout(window._vueGrabExtractionTimeout);
-      window._vueGrabExtractionTimeout = null;
+      window._vueGrabExtractionTimeout = undefined;
     }
 
     const componentData = event.data.data;
     if (componentData) {
       lastComponentData = componentData;
 
-      // Handle based on pending action
       if (pendingAction === 'editor') {
-        // Copy to clipboard AND open in editor
         copyToClipboard(componentData);
         openInEditor(componentData);
-        showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor].name}...`, 'success');
+        showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor]?.name}...`, 'success');
       } else {
-        // Default: just copy to clipboard
         copyToClipboard(componentData);
         showToast('✓ Component data copied to clipboard!', 'success');
       }
@@ -111,14 +98,12 @@ window.addEventListener('message', (event) => {
       deactivate();
       isActive = false;
     } else {
-      // Extraction failed - show error and deactivate
       showToast(event.data.error || 'No Vue component found', 'error');
       pendingAction = null;
       deactivate();
       isActive = false;
     }
   } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
-    // Response from hover detection - show component name and hierarchy
     if (event.data.info && hoveredElement) {
       const componentName = event.data.info.name || 'Anonymous';
       hoveredElement.classList.add('vue-grab-highlight');
@@ -129,12 +114,10 @@ window.addEventListener('message', (event) => {
       updateBreadcrumb();
     }
   } else if (event.data.type === 'VUE_GRAB_NAVIGATION_RESULT') {
-    // Response from parent/child navigation
     if (event.data.info) {
       currentHierarchy = event.data.info.hierarchy || [];
       currentHierarchyIndex = event.data.info.currentIndex ?? -1;
 
-      // Update the component name display
       if (hoveredElement) {
         hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
       }
@@ -145,8 +128,7 @@ window.addEventListener('message', (event) => {
   }
 });
 
-// Open component in configured editor
-function openInEditor(componentData) {
+function openInEditor(componentData: ComponentData): void {
   const filePath = componentData?.filePath;
   const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
 
@@ -160,7 +142,6 @@ function openInEditor(componentData) {
   }
 }
 
-// Initialize Chrome message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'toggle') {
     isActive = !isActive;
@@ -175,8 +156,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'getLastData') {
     sendResponse({ data: lastComponentData });
   } else if (request.action === 'setEditor') {
-    // Update selected editor from popup
-    selectedEditor = request.editor;
+    selectedEditor = request.editor as string;
     sendResponse({ success: true });
   } else if (request.action === 'formatAndDownload') {
     if (lastComponentData) {
@@ -189,7 +169,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-function activate() {
+function activate(): void {
   document.addEventListener('mouseover', handleMouseOver);
   document.addEventListener('mouseout', handleMouseOut);
   document.addEventListener('click', handleClick, true);
@@ -199,7 +179,7 @@ function activate() {
   showToast('Vue Grab activated! Click any element to extract its component.', 'success');
 }
 
-function deactivate() {
+function deactivate(): void {
   document.removeEventListener('mouseover', handleMouseOver);
   document.removeEventListener('mouseout', handleMouseOut);
   document.removeEventListener('click', handleClick, true);
@@ -210,7 +190,6 @@ function deactivate() {
     hoveredElement.removeAttribute('data-vue-grab-id');
   }
 
-  // Reset hierarchy state
   currentHierarchy = null;
   currentHierarchyIndex = -1;
 
@@ -219,23 +198,21 @@ function deactivate() {
   hideFloatingLabel();
 }
 
-function handleMouseOver(e) {
+function handleMouseOver(e: MouseEvent): void {
   if (!isActive) return;
 
-  hoveredElement = e.target;
+  hoveredElement = e.target as HTMLElement;
 
-  // Create a unique identifier for this element
   const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
 
-  // Ask injected script to find Vue component info
   window.postMessage({
     type: 'VUE_GRAB_GET_INFO',
     elementId: elementId
   }, '*');
 }
 
-function handleMouseOut(e) {
+function handleMouseOut(e: MouseEvent): void {
   if (!isActive) return;
 
   if (hoveredElement) {
@@ -244,38 +221,24 @@ function handleMouseOut(e) {
     hoveredElement = null;
   }
 
-  // Hide floating label
   hideFloatingLabel();
-
-  // Reset hierarchy when mouse leaves element
   currentHierarchy = null;
   currentHierarchyIndex = -1;
   hideBreadcrumb();
 }
 
-/**
- * Handle click events during grab mode.
- * Regular click = copy to clipboard
- * Cmd/Ctrl+click = copy and open in editor
- */
-function handleClick(e) {
+function handleClick(e: MouseEvent): void {
   if (!isActive) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  triggerExtraction(e.metaKey || e.ctrlKey, e.target);
+  triggerExtraction(e.metaKey || e.ctrlKey, e.target as HTMLElement);
 }
 
-/**
- * Shared extraction logic for click and Enter key.
- * @param {boolean} openInEditorMode - Whether to also open in editor
- * @param {HTMLElement|null} targetElement - The clicked element (null for Enter key)
- */
-function triggerExtraction(openInEditorMode, targetElement) {
+function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement | null): void {
   pendingAction = openInEditorMode ? 'editor' : 'copy';
 
-  // Use target element if hoveredElement is not set
   if (!hoveredElement && targetElement) {
     hoveredElement = targetElement;
   }
@@ -285,14 +248,12 @@ function triggerExtraction(openInEditorMode, targetElement) {
     return;
   }
 
-  // Ensure element has an ID for the injected script to find it
   if (!hoveredElement.getAttribute('data-vue-grab-id')) {
     const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
   }
 
-  // Timeout safety: deactivate if extraction doesn't complete
-  const extractionTimeout = setTimeout(() => {
+  const extractionTimeout = window.setTimeout(() => {
     if (isActive) {
       showToast('Extraction timed out. Try again.', 'error');
       pendingAction = null;
@@ -305,14 +266,7 @@ function triggerExtraction(openInEditorMode, targetElement) {
   extractCurrentComponent();
 }
 
-/**
- * Handle keyboard shortcuts during grab mode.
- * - Escape: deactivate
- * - Enter: extract and copy (Cmd+Enter for editor)
- * - Alt+ArrowUp: navigate to parent component
- * - Alt+ArrowDown: navigate to child component
- */
-function handleKeyDown(e) {
+function handleKeyDown(e: KeyboardEvent): void {
   if (!isActive) return;
 
   if (e.key === 'Escape') {
@@ -344,15 +298,12 @@ function handleKeyDown(e) {
   }
 }
 
-// Extract the currently selected/navigated component
-function extractCurrentComponent() {
-  // If user has navigated to a specific component in hierarchy, extract that
+function extractCurrentComponent(): void {
   if (currentHierarchyIndex >= 0 && currentHierarchy && currentHierarchy.length > 0) {
     window.postMessage({ type: 'VUE_GRAB_EXTRACT_CURRENT' }, '*');
     return;
   }
 
-  // Otherwise extract from the hovered/clicked element
   if (hoveredElement) {
     let elementId = hoveredElement.getAttribute('data-vue-grab-id');
     if (!elementId) {
@@ -366,10 +317,9 @@ function extractCurrentComponent() {
     return;
   }
 
-  // No element to extract from - clear timeout and show error
   if (window._vueGrabExtractionTimeout) {
     clearTimeout(window._vueGrabExtractionTimeout);
-    window._vueGrabExtractionTimeout = null;
+    window._vueGrabExtractionTimeout = undefined;
   }
   showToast('No element selected. Try hovering over a component first.', 'error');
   pendingAction = null;
@@ -377,10 +327,9 @@ function extractCurrentComponent() {
   isActive = false;
 }
 
-function copyToClipboard(data) {
+function copyToClipboard(data: ComponentData): void {
   const formatted = formatForClaudeCCode(data);
 
-  // Use modern clipboard API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(formatted).catch(err => {
       console.error('Could not copy to clipboard:', err);
@@ -391,7 +340,7 @@ function copyToClipboard(data) {
   }
 }
 
-function fallbackCopy(text) {
+function fallbackCopy(text: string): void {
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.style.position = 'fixed';
@@ -402,8 +351,7 @@ function fallbackCopy(text) {
   document.body.removeChild(textarea);
 }
 
-function formatForClaudeCCode(data) {
-  // Handle element info safely (may be null when extracting from hierarchy navigation)
+function formatForClaudeCCode(data: ComponentData): string {
   const elementInfo = data.element
     ? `## Element
 - **Tag**: <${data.element.tagName}>
@@ -476,7 +424,6 @@ ${data.methods?.length ? data.methods.join(', ') : 'None'}
   // Add Vuex Store section
   if (data.vuexStore) {
     output += `\n## Vuex Store\n\n`;
-
     output += `**Full State:**\n\`\`\`json\n${JSON.stringify(data.vuexStore.state, null, 2)}\n\`\`\`\n\n`;
 
     if (data.vuexStore.usedState.length > 0) {
@@ -621,7 +568,7 @@ ${data.template}
   return output;
 }
 
-function showToast(message, type = 'success') {
+function showToast(message: string, type: 'success' | 'error' = 'success'): void {
   const toast = document.createElement('div');
   toast.className = `vue-grab-toast ${type}`;
   toast.textContent = message;
@@ -633,7 +580,7 @@ function showToast(message, type = 'success') {
   }, VUE_GRAB_CONFIG.TOAST_DURATION);
 }
 
-function showActiveIndicator() {
+function showActiveIndicator(): void {
   activeIndicator = document.createElement('div');
   activeIndicator.className = 'vue-grab-active-indicator';
   activeIndicator.innerHTML = `
@@ -648,15 +595,14 @@ function showActiveIndicator() {
   document.body.appendChild(activeIndicator);
 }
 
-function hideActiveIndicator() {
+function hideActiveIndicator(): void {
   if (activeIndicator) {
     activeIndicator.remove();
     activeIndicator = null;
   }
 }
 
-// Breadcrumb UI for component hierarchy
-function updateBreadcrumb() {
+function updateBreadcrumb(): void {
   if (!currentHierarchy || currentHierarchy.length === 0) {
     hideBreadcrumb();
     return;
@@ -668,7 +614,6 @@ function updateBreadcrumb() {
     document.body.appendChild(breadcrumbElement);
   }
 
-  // Build breadcrumb HTML
   const items = currentHierarchy.map((name, index) => {
     const isActive = index === currentHierarchyIndex;
     const classes = ['vue-grab-breadcrumb-item'];
@@ -684,15 +629,14 @@ function updateBreadcrumb() {
   `;
 }
 
-function hideBreadcrumb() {
+function hideBreadcrumb(): void {
   if (breadcrumbElement) {
     breadcrumbElement.remove();
     breadcrumbElement = null;
   }
 }
 
-// Floating label for component name (avoids overflow:hidden clipping)
-function showFloatingLabel(element, componentName) {
+function showFloatingLabel(element: HTMLElement, componentName: string): void {
   hideFloatingLabel();
 
   if (!element || !componentName) return;
@@ -705,22 +649,19 @@ function showFloatingLabel(element, componentName) {
   positionFloatingLabel(element);
 }
 
-function positionFloatingLabel(element) {
+function positionFloatingLabel(element: HTMLElement): void {
   if (!floatingLabel || !element) return;
 
   const rect = element.getBoundingClientRect();
   const labelRect = floatingLabel.getBoundingClientRect();
 
-  // Position above the element, or below if not enough space above
   let top = rect.top + window.scrollY - labelRect.height - 4;
   let left = rect.left + window.scrollX;
 
-  // If would go above viewport, position below instead
   if (top < window.scrollY + 4) {
     top = rect.bottom + window.scrollY + 4;
   }
 
-  // Keep within horizontal viewport bounds
   if (left + labelRect.width > window.innerWidth - 4) {
     left = window.innerWidth - labelRect.width - 4;
   }
@@ -730,19 +671,18 @@ function positionFloatingLabel(element) {
   floatingLabel.style.left = `${left}px`;
 }
 
-function hideFloatingLabel() {
+function hideFloatingLabel(): void {
   if (floatingLabel) {
     floatingLabel.remove();
     floatingLabel = null;
   }
 }
 
-function triggerDownload(componentData) {
+function triggerDownload(componentData: ComponentData): void {
   const formatted = formatForClaudeCCode(componentData);
   const componentName = componentData.componentName || 'component';
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
-  // Trigger download via the extension popup
   chrome.runtime.sendMessage({
     action: 'downloadFile',
     content: formatted,

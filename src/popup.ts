@@ -1,16 +1,19 @@
-const toggleBtn = document.getElementById('toggleBtn');
-const ideSection = document.getElementById('ideSection');
-const ideSelect = document.getElementById('ideSelect');
-const openIdeBtn = document.getElementById('openIdeBtn');
-const statusDiv = document.getElementById('status');
+import { VUE_GRAB_IDE_CONFIG } from './constants';
+import type { ComponentData, ContentScriptResponse } from './types';
+
+const toggleBtn = document.getElementById('toggleBtn') as HTMLButtonElement;
+const ideSection = document.getElementById('ideSection') as HTMLDivElement;
+const ideSelect = document.getElementById('ideSelect') as HTMLSelectElement;
+const openIdeBtn = document.getElementById('openIdeBtn') as HTMLButtonElement;
+const statusDiv = document.getElementById('status') as HTMLDivElement;
 
 // Store the last component data for IDE opening
-let lastComponentFilePath = null;
+let lastComponentFilePath: string | null = null;
 
 // Load saved editor preference
 chrome.storage.local.get(['selectedEditor'], (result) => {
   if (result.selectedEditor) {
-    ideSelect.value = result.selectedEditor;
+    ideSelect.value = result.selectedEditor as string;
   }
 });
 
@@ -26,7 +29,11 @@ ideSelect.addEventListener('change', () => {
 });
 
 // Helper to safely send messages to content script with error handling
-function sendMessageToTab(action, callback, extraData = {}) {
+function sendMessageToTab(
+  action: string,
+  callback: ((response: ContentScriptResponse) => void) | null,
+  extraData: Record<string, any> = {}
+): void {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     // Validate we have a tab
     if (!tabs || !tabs[0] || !tabs[0].id) {
@@ -49,7 +56,7 @@ function sendMessageToTab(action, callback, extraData = {}) {
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response) => {
+    chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response: ContentScriptResponse) => {
       // Check for connection errors
       if (chrome.runtime.lastError) {
         console.error('Connection error:', chrome.runtime.lastError.message);
@@ -64,7 +71,7 @@ function sendMessageToTab(action, callback, extraData = {}) {
   });
 }
 
-function showError(message) {
+function showError(message: string): void {
   statusDiv.textContent = '⚠ ' + message;
   statusDiv.className = 'status error';
   toggleBtn.disabled = true;
@@ -74,7 +81,7 @@ function showError(message) {
 // Check current state when popup opens
 sendMessageToTab('getState', (response) => {
   if (response) {
-    updateUI(response.isActive, response.hasData);
+    updateUI(response.isActive ?? false, response.hasData ?? false);
 
     // If we have data, get the file path for IDE opening
     if (response.hasData) {
@@ -92,7 +99,7 @@ toggleBtn.addEventListener('click', () => {
 
   sendMessageToTab('toggle', (response) => {
     if (response) {
-      updateUI(response.isActive, false);
+      updateUI(response.isActive ?? false, false);
 
       // Close popup after activating
       if (response.isActive) {
@@ -116,7 +123,7 @@ openIdeBtn.addEventListener('click', () => {
   sendMessageToTab('getLastData', (response) => {
     if (response && response.data) {
       const filePath = response.data.filePath;
-      const url = config.buildUrl(filePath);
+      const url = config.buildUrl(filePath || '');
 
       try {
         // Try to open the IDE with the file
@@ -145,7 +152,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-function updateUI(isActive, hasData) {
+function updateUI(isActive: boolean, hasData: boolean): void {
   toggleBtn.disabled = false;
 
   if (isActive) {
