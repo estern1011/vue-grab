@@ -5,9 +5,11 @@
  * Type-safe constants for IDE configurations, application settings, and message types.
  */
 
+import type { IDEConfigMap, VueGrabConfig, MessageTypes } from './types';
+
 // IDE configurations for direct file opening
 // Each IDE uses a custom URL protocol to open files
-const VUE_GRAB_IDE_CONFIG = {
+export const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
   cursor: {
     name: 'Cursor',
     scheme: 'cursor',
@@ -21,7 +23,7 @@ const VUE_GRAB_IDE_CONFIG = {
 };
 
 // Configuration constants
-const VUE_GRAB_CONFIG = {
+export const VUE_GRAB_CONFIG: VueGrabConfig = {
   // Maximum DOM elements to scan when detecting Vue presence
   MAX_VUE_DETECTION_ELEMENTS: 100,
 
@@ -45,7 +47,7 @@ const VUE_GRAB_CONFIG = {
 };
 
 // Message types for communication between content.js and injected.js
-const VUE_GRAB_MESSAGE_TYPES = {
+export const VUE_GRAB_MESSAGE_TYPES: MessageTypes = {
   // content.js -> injected.js
   GET_INFO: 'VUE_GRAB_GET_INFO',
   EXTRACT: 'VUE_GRAB_EXTRACT',
@@ -58,10 +60,3 @@ const VUE_GRAB_MESSAGE_TYPES = {
   COMPONENT_DATA: 'VUE_GRAB_COMPONENT_DATA',
   NAVIGATION_RESULT: 'VUE_GRAB_NAVIGATION_RESULT'
 };
-
-// Export to window for use in extension contexts
-if (typeof window !== 'undefined') {
-  (window as any).VUE_GRAB_IDE_CONFIG = VUE_GRAB_IDE_CONFIG;
-  (window as any).VUE_GRAB_CONFIG = VUE_GRAB_CONFIG;
-  (window as any).VUE_GRAB_MESSAGE_TYPES = VUE_GRAB_MESSAGE_TYPES;
-}
