@@ -33,9 +33,17 @@
   let currentComponentStack = [];
   let currentStackIndex = -1;
 
+  // Configuration constants
+  const MAX_VUE_DETECTION_ELEMENTS = 100;
+  const MAX_COMPONENT_DEPTH = 100;
+  const MAX_SERIALIZATION_DEPTH = 5;
+  const MAX_VNODE_DEPTH = 50;
+
   // Listen for messages from content script
   window.addEventListener('message', (event) => {
+    // Security: Verify message source and origin to prevent malicious scripts
     if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
 
     if (event.data.type === 'VUE_GRAB_GET_INFO') {
       const element = document.querySelector(`[data-vue-grab-id="${event.data.elementId}"]`);
@@ -190,7 +198,7 @@
     // Check for any element with Vue properties
     if (!result.found) {
       const testElements = document.querySelectorAll('*');
-      for (let i = 0; i < Math.min(testElements.length, 100); i++) {
+      for (let i = 0; i < Math.min(testElements.length, MAX_VUE_DETECTION_ELEMENTS); i++) {
         const el = testElements[i];
         if (el.__vue__ || el.__vueParentComponent || el.__vnode) {
           result.found = true;
@@ -221,7 +229,7 @@
     // Walk up DOM to collect all Vue component instances we encounter
     let currentEl = element;
     let depth = 0;
-    const maxDepth = 100;
+    const maxDepth = MAX_COMPONENT_DEPTH;
 
     while (currentEl && depth < maxDepth) {
       let foundInstance = null;
@@ -313,7 +321,7 @@
     const visitedInstances = new Set();
 
     function collectFromVNode(vnode, depth = 0) {
-      if (!vnode || depth > 50) return;
+      if (!vnode || depth > MAX_VNODE_DEPTH) return;
 
       // Handle arrays of vnodes
       if (Array.isArray(vnode)) {
@@ -951,10 +959,12 @@
         });
 
         if (componentCode) {
+          // Escape special regex characters in storeId to prevent regex errors
+          const escapedStoreId = storeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const storeUsagePatterns = [
-            new RegExp(`use${storeId.charAt(0).toUpperCase() + storeId.slice(1)}Store`, 'i'),
-            new RegExp(`['"\`]${storeId}['"\`]`, 'i'),
-            new RegExp(`\\b${storeId}\\b`)
+            new RegExp(`use${escapedStoreId.charAt(0).toUpperCase() + escapedStoreId.slice(1)}Store`, 'i'),
+            new RegExp(`['"\`]${escapedStoreId}['"\`]`, 'i'),
+            new RegExp(`\\b${escapedStoreId}\\b`)
           ];
 
           const definitelyUsed = storeUsagePatterns.some(pattern => pattern.test(componentCode));
@@ -975,7 +985,7 @@
 
       return stores.length > 0 ? stores : null;
     } catch (e) {
-      console.error('Error extracting Pinia stores:', e);
+      console.debug('Vue Grab: Error extracting Pinia stores:', e);
       return null;
     }
   }
@@ -1039,7 +1049,7 @@
 
       return storeData;
     } catch (e) {
-      console.error('Error extracting Vuex store:', e);
+      console.debug('Vue Grab: Error extracting Vuex store:', e);
       return null;
     }
   }
@@ -1124,7 +1134,7 @@
 
       return queries.length > 0 ? queries : null;
     } catch (e) {
-      console.error('Error extracting TanStack queries:', e);
+      console.debug('Vue Grab: Error extracting TanStack queries:', e);
       return null;
     }
   }
@@ -1168,7 +1178,7 @@
       const seen = new WeakSet();
 
       const serialize = (value, depth = 0) => {
-        if (depth > 5) return '[Deep Object]';
+        if (depth > MAX_SERIALIZATION_DEPTH) return '[Deep Object]';
 
         if (value === null) return null;
         if (value === undefined) return undefined;
@@ -1213,7 +1223,7 @@
 
       return serialize(obj);
     } catch (e) {
-      console.error('Serialization error:', e);
+      console.debug('Vue Grab: Serialization error:', e);
       return { error: 'Could not serialize data' };
     }
   }

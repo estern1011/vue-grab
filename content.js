@@ -27,7 +27,7 @@ let currentHierarchy = null;
 let currentHierarchyIndex = -1;
 let breadcrumbElement = null;
 let floatingLabel = null; // New: floating label element
-let selectedEditor = 'cursor'; // Default editor, will be loaded from storage
+let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
 // Load saved editor preference
 if (chrome.storage && chrome.storage.local) {
@@ -37,18 +37,6 @@ if (chrome.storage && chrome.storage.local) {
     }
   });
 }
-
-// IDE configurations for direct opening
-const IDE_CONFIG = {
-  cursor: {
-    name: 'Cursor',
-    buildUrl: (filePath) => `cursor://file/${filePath || ''}`
-  },
-  windsurf: {
-    name: 'Windsurf',
-    buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
-  }
-};
 
 // Inject script into page context to access Vue internals
 // Content scripts run in isolated world and can't access page JS variables directly
@@ -112,7 +100,7 @@ window.addEventListener('message', (event) => {
         // Copy to clipboard AND open in editor
         copyToClipboard(componentData);
         openInEditor(componentData);
-        showToast(`✓ Copied and opening in ${IDE_CONFIG[selectedEditor].name}...`, 'success');
+        showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor].name}...`, 'success');
       } else {
         // Default: just copy to clipboard
         copyToClipboard(componentData);
@@ -160,7 +148,7 @@ window.addEventListener('message', (event) => {
 // Open component in configured editor
 function openInEditor(componentData) {
   const filePath = componentData?.filePath;
-  const config = IDE_CONFIG[selectedEditor];
+  const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
 
   if (config && filePath) {
     const url = config.buildUrl(filePath);
@@ -237,7 +225,7 @@ function handleMouseOver(e) {
   hoveredElement = e.target;
 
   // Create a unique identifier for this element
-  const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+  const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
 
   // Ask injected script to find Vue component info
@@ -299,7 +287,7 @@ function triggerExtraction(openInEditorMode, targetElement) {
 
   // Ensure element has an ID for the injected script to find it
   if (!hoveredElement.getAttribute('data-vue-grab-id')) {
-    const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+    const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
   }
 
@@ -311,7 +299,7 @@ function triggerExtraction(openInEditorMode, targetElement) {
       deactivate();
       isActive = false;
     }
-  }, 3000);
+  }, VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
 
   window._vueGrabExtractionTimeout = extractionTimeout;
   extractCurrentComponent();
@@ -368,7 +356,7 @@ function extractCurrentComponent() {
   if (hoveredElement) {
     let elementId = hoveredElement.getAttribute('data-vue-grab-id');
     if (!elementId) {
-      elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+      elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
       hoveredElement.setAttribute('data-vue-grab-id', elementId);
     }
     window.postMessage({
@@ -642,7 +630,7 @@ function showToast(message, type = 'success') {
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, VUE_GRAB_CONFIG.TOAST_DURATION);
 }
 
 function showActiveIndicator() {

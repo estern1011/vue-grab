@@ -4,20 +4,6 @@ const ideSelect = document.getElementById('ideSelect');
 const openIdeBtn = document.getElementById('openIdeBtn');
 const statusDiv = document.getElementById('status');
 
-// IDE configurations with their URL schemes
-const IDE_CONFIG = {
-  cursor: {
-    name: 'Cursor',
-    scheme: 'cursor',
-    buildUrl: (filePath) => `cursor://file/${filePath || ''}`
-  },
-  windsurf: {
-    name: 'Windsurf',
-    scheme: 'windsurf',
-    buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
-  }
-};
-
 // Store the last component data for IDE opening
 let lastComponentFilePath = null;
 
@@ -118,7 +104,7 @@ toggleBtn.addEventListener('click', () => {
 
 openIdeBtn.addEventListener('click', () => {
   const selectedIde = ideSelect.value;
-  const config = IDE_CONFIG[selectedIde];
+  const config = VUE_GRAB_IDE_CONFIG[selectedIde];
 
   if (!config) {
     statusDiv.textContent = '✗ Unknown IDE selected';

@@ -200,26 +200,38 @@ Want to customize or extend Vue Grab?
 # Project structure
 vue-grab/
 ├── manifest.json       # Extension configuration
+├── constants.js       # Shared configuration constants
 ├── popup.html         # Extension popup UI
 ├── popup.js          # Popup logic
-├── content.js        # Main grabbing logic
+├── content.js        # Main grabbing logic (content script)
 ├── content.css       # Styles for highlights/toasts
+├── injected.js       # Vue internals access (page context)
 └── icons/           # Extension icons
 ```
 
 ### TODO / Ideas
 
+**Completed Features:**
 - [x] Add actual extension icons ✅
 - [x] Support for Pinia/Vuex state extraction ✅
 - [x] Export to Markdown files ✅
 - [x] Cursor Composer integration ✅
 - [x] TanStack Query/Vue Query support ✅
 - [x] Smart filtering to detect component usage ✅
+- [x] Vue Router route information ✅
+- [x] Provide/Inject values extraction ✅
+- [x] Emitted events detection ✅
+- [x] Slots extraction ✅
+- [x] Component hierarchy navigation (Alt+↑↓) ✅
+
+**Future Ideas:**
 - [ ] Direct integration with Claude Code API
-- [ ] Vue Router route information
-- [ ] Component hierarchy visualization
+- [ ] Enhanced component hierarchy visualization
 - [ ] Filter sensitive data (passwords, tokens, etc.)
 - [ ] Background script for better deep linking support
+- [ ] TypeScript definitions for better IDE support
+- [ ] Publish to Chrome Web Store
+- [ ] Firefox Add-ons distribution
 
 ## Contributing
 
