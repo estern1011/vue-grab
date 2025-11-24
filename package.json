@@ -3,16 +3,16 @@
   "version": "3.0.0",
   "description": "Browser extension to extract Vue component context for AI coding assistants",
   "scripts": {
-    "build": "npx tsc && npm run copy-assets",
-    "watch": "npx tsc --watch",
-    "copy-assets": "cp src/content.css dist/ && cp -r icons dist/ && cp manifest.json dist/ && cp popup.html dist/",
-    "clean": "rm -rf dist/*",
-    "rebuild": "npm run clean && npm run build",
-    "dev": "npm run build && npm run watch"
+    "build": "vite build && cp -r icons dist/",
+    "dev": "vite build --watch",
+    "preview": "vite preview"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
-    "typescript": "^5.4.5"
+    "@vitejs/plugin-vue": "^6.0.2",
+    "typescript": "^5.4.5",
+    "vite": "^7.2.4",
+    "vite-plugin-web-extension": "^4.5.0"
   },
   "keywords": [
     "vue",

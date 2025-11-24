@@ -60,19 +60,3 @@ export const VUE_GRAB_MESSAGE_TYPES: MessageTypes = {
   COMPONENT_DATA: 'VUE_GRAB_COMPONENT_DATA',
   NAVIGATION_RESULT: 'VUE_GRAB_NAVIGATION_RESULT'
 };
-
-// Make constants available globally for non-module contexts
-declare global {
-  interface Window {
-    VUE_GRAB_IDE_CONFIG: IDEConfigMap;
-    VUE_GRAB_CONFIG: VueGrabConfig;
-    VUE_GRAB_MESSAGE_TYPES: MessageTypes;
-  }
-}
-
-// Export to window for use in extension contexts
-if (typeof window !== 'undefined') {
-  window.VUE_GRAB_IDE_CONFIG = VUE_GRAB_IDE_CONFIG;
-  window.VUE_GRAB_CONFIG = VUE_GRAB_CONFIG;
-  window.VUE_GRAB_MESSAGE_TYPES = VUE_GRAB_MESSAGE_TYPES;
-}
