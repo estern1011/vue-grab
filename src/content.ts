@@ -205,7 +205,7 @@ function openInEditor(componentData: ComponentData): void {
   }
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'toggle') {
     isActive = !isActive;
     if (isActive) {
@@ -268,7 +268,7 @@ function handleMouseOver(e: MouseEvent): void {
   });
 }
 
-function handleMouseOut(e: MouseEvent): void {
+function handleMouseOut(_e: MouseEvent): void {
   if (!isActive) return;
 
   if (hoveredElement) {
