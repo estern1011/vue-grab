@@ -21,6 +21,9 @@ declare global {
 
     // Extension-specific
     _vueGrabExtractionTimeout?: number;
+    VUE_GRAB_IDE_CONFIG?: any;
+    VUE_GRAB_CONFIG?: any;
+    VUE_GRAB_MESSAGE_TYPES?: any;
   }
 
   // Extend Element interface for Vue properties

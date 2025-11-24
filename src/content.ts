@@ -5,29 +5,16 @@
  * It handles all UI elements and user interaction.
  */
 
-import type { ComponentData, ComponentInfo, MessageFromInjected } from './types';
-
-// Access constants from window object (loaded from constants.js)
-const VUE_GRAB_IDE_CONFIG = window.VUE_GRAB_IDE_CONFIG;
-const VUE_GRAB_CONFIG = window.VUE_GRAB_CONFIG;
-
-// Extend Window interface for our custom properties
-declare global {
-  interface Window {
-    _vueGrabExtractionTimeout?: number;
-  }
-}
-
 // State
 let isActive = false;
 let hoveredElement: HTMLElement | null = null;
 let activeIndicator: HTMLElement | null = null;
-let lastComponentData: ComponentData | null = null;
+let lastComponentData: any = null;
 let currentHierarchy: string[] | null = null;
 let currentHierarchyIndex = -1;
 let breadcrumbElement: HTMLElement | null = null;
 let floatingLabel: HTMLElement | null = null;
-let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
+let selectedEditor = (window as any).VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
 // Load saved editor preference
 if (chrome.storage && chrome.storage.local) {
@@ -75,7 +62,7 @@ function handleGlobalKeyDown(e: KeyboardEvent): void {
 }
 
 // Listen for messages from injected script
-window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) => {
+window.addEventListener('message', (event: MessageEvent<any>) => {
   if (event.source !== window) return;
 
   if (event.data.type === 'VUE_GRAB_COMPONENT_DATA') {
@@ -91,7 +78,7 @@ window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) =>
       if (pendingAction === 'editor') {
         copyToClipboard(componentData);
         openInEditor(componentData);
-        showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor]?.name}...`, 'success');
+        showToast(`✓ Copied and opening in ${(window as any).VUE_GRAB_IDE_CONFIG[selectedEditor]?.name}...`, 'success');
       } else {
         copyToClipboard(componentData);
         showToast('✓ Component data copied to clipboard!', 'success');
@@ -131,9 +118,9 @@ window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) =>
   }
 });
 
-function openInEditor(componentData: ComponentData): void {
+function openInEditor(componentData: any): void {
   const filePath = componentData?.filePath;
-  const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
+  const config = (window as any).VUE_GRAB_IDE_CONFIG[selectedEditor];
 
   if (config && filePath) {
     const url = config.buildUrl(filePath);
@@ -263,7 +250,7 @@ function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement
       deactivate();
       isActive = false;
     }
-  }, VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
+  }, (window as any).VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
 
   window._vueGrabExtractionTimeout = extractionTimeout;
   extractCurrentComponent();
@@ -330,7 +317,7 @@ function extractCurrentComponent(): void {
   isActive = false;
 }
 
-function copyToClipboard(data: ComponentData): void {
+function copyToClipboard(data: any): void {
   const formatted = formatForClaudeCCode(data);
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -354,7 +341,7 @@ function fallbackCopy(text: string): void {
   document.body.removeChild(textarea);
 }
 
-function formatForClaudeCCode(data: ComponentData): string {
+function formatForClaudeCCode(data: any): string {
   const elementInfo = data.element
     ? `## Element
 - **Tag**: <${data.element.tagName}>
@@ -580,7 +567,7 @@ function showToast(message: string, type: 'success' | 'error' = 'success'): void
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
-  }, VUE_GRAB_CONFIG.TOAST_DURATION);
+  }, (window as any).VUE_GRAB_CONFIG.TOAST_DURATION);
 }
 
 function showActiveIndicator(): void {
@@ -681,7 +668,7 @@ function hideFloatingLabel(): void {
   }
 }
 
-function triggerDownload(componentData: ComponentData): void {
+function triggerDownload(componentData: any): void {
   const formatted = formatForClaudeCCode(componentData);
   const componentName = componentData.componentName || 'component';
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

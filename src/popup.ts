@@ -1,8 +1,3 @@
-import type { ComponentData, ContentScriptResponse } from './types';
-
-// Access constants from window object (loaded from constants.js)
-const VUE_GRAB_IDE_CONFIG = window.VUE_GRAB_IDE_CONFIG;
-
 const toggleBtn = document.getElementById('toggleBtn') as HTMLButtonElement;
 const ideSection = document.getElementById('ideSection') as HTMLDivElement;
 const ideSelect = document.getElementById('ideSelect') as HTMLSelectElement;
@@ -33,7 +28,7 @@ ideSelect.addEventListener('change', () => {
 // Helper to safely send messages to content script with error handling
 function sendMessageToTab(
   action: string,
-  callback: ((response: ContentScriptResponse) => void) | null,
+  callback: ((response: any) => void) | null,
   extraData: Record<string, any> = {}
 ): void {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -58,7 +53,7 @@ function sendMessageToTab(
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response: ContentScriptResponse) => {
+    chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response: any) => {
       // Check for connection errors
       if (chrome.runtime.lastError) {
         console.error('Connection error:', chrome.runtime.lastError.message);
@@ -113,7 +108,7 @@ toggleBtn.addEventListener('click', () => {
 
 openIdeBtn.addEventListener('click', () => {
   const selectedIde = ideSelect.value;
-  const config = VUE_GRAB_IDE_CONFIG[selectedIde];
+  const config = (window as any).VUE_GRAB_IDE_CONFIG[selectedIde];
 
   if (!config) {
     statusDiv.textContent = '✗ Unknown IDE selected';
