@@ -51,6 +51,26 @@ if (document.head || document.documentElement) {
 // Track pending action for keyboard shortcuts
 let pendingAction = null; // 'copy' or 'editor'
 
+// Global keyboard listener for activation shortcut (⌘C / Ctrl+C)
+// This works even when grab mode is not active
+document.addEventListener('keydown', handleGlobalKeyDown, true);
+
+function handleGlobalKeyDown(e) {
+  // ⌘C or Ctrl+C to activate grab mode (only when not already active)
+  if (!isActive && (e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey) {
+    // Don't interfere with text selection copy
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) {
+      return; // Let normal copy happen
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    isActive = true;
+    activate();
+  }
+}
+
 // Listen for messages from injected script
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
@@ -219,8 +239,14 @@ function handleClick(e) {
   e.preventDefault();
   e.stopPropagation();
 
-  // Set default action for click
-  pendingAction = 'copy';
+  // ⌘+click or Ctrl+click → copy + open in editor
+  // Regular click → just copy
+  if (e.metaKey || e.ctrlKey) {
+    pendingAction = 'editor';
+  } else {
+    pendingAction = 'copy';
+  }
+
   extractCurrentComponent();
 }
 
@@ -232,25 +258,6 @@ function handleKeyDown(e) {
     deactivate();
     isActive = false;
     showToast('Vue Grab deactivated', 'success');
-    return;
-  }
-
-  // Check for Cmd/Ctrl + C shortcuts (copy to clipboard)
-  // Cmd+C or Ctrl+C - extract and copy
-  if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey && hoveredElement) {
-    e.preventDefault();
-    e.stopPropagation();
-    pendingAction = 'copy';
-    extractCurrentComponent();
-    return;
-  }
-
-  // Cmd+Shift+C or Ctrl+Shift+C - extract, copy, and open in editor
-  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'C' && hoveredElement) {
-    e.preventDefault();
-    e.stopPropagation();
-    pendingAction = 'editor';
-    extractCurrentComponent();
     return;
   }
 
@@ -546,8 +553,8 @@ function showActiveIndicator() {
   activeIndicator.innerHTML = `
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
-      <span class="shortcut"><kbd>⌘C</kbd> Copy</span>
-      <span class="shortcut"><kbd>⌘⇧C</kbd> Copy + Editor</span>
+      <span class="shortcut"><kbd>Click</kbd> Copy</span>
+      <span class="shortcut"><kbd>⌘+Click</kbd> Copy + Editor</span>
       <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
       <span class="shortcut"><kbd>Esc</kbd> Cancel</span>
     </div>

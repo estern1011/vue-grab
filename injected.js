@@ -179,51 +179,48 @@
   function getVueComponentInfo(element) {
     let instance = null;
 
-    // Method 1: Try Vue DevTools hook (most reliable when devtools is present)
-    if (window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
+    // Strategy: Find the CLOSEST component to this element by walking up the DOM
+    // and checking each element for Vue component attachment
+
+    let currentEl = element;
+    let depth = 0;
+    const maxDepth = 100;
+
+    while (currentEl && depth < maxDepth) {
+      // Check for Vue 3 component on this element
+      // __vueParentComponent is the component that has this element as its root
+      if (currentEl.__vueParentComponent) {
+        instance = currentEl.__vueParentComponent;
+        break;
+      }
+
+      // Check for vnode with component
+      if (currentEl.__vnode?.component) {
+        instance = currentEl.__vnode.component;
+        break;
+      }
+
+      // Check for Vue 2 component
+      if (currentEl.__vue__) {
+        instance = currentEl.__vue__;
+        break;
+      }
+
+      // Check fiber-like properties
+      if (currentEl._vnode?.component) {
+        instance = currentEl._vnode.component;
+        break;
+      }
+
+      currentEl = currentEl.parentElement;
+      depth++;
+    }
+
+    // Fallback: Try DevTools hook if still not found
+    if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
       const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
       if (hook.apps && hook.apps.size > 0) {
         instance = findComponentViaDevtoolsHook(element, hook);
-      }
-    }
-
-    // Method 2: Try Vue 3 internal properties
-    if (!instance) {
-      instance = element.__vueParentComponent;
-    }
-
-    if (!instance && element.__vnode) {
-      instance = element.__vnode.component;
-    }
-
-    // Method 3: Try Vue 2 property
-    if (!instance) {
-      instance = element.__vue__;
-    }
-
-    // Method 4: Check for fiber-like properties (some Vue 3 builds)
-    if (!instance && element._vnode) {
-      instance = element._vnode.component;
-    }
-
-    // Method 5: Walk up the DOM tree
-    if (!instance) {
-      let parent = element.parentElement;
-      let depth = 0;
-      const maxDepth = 50;
-
-      while (parent && !instance && depth < maxDepth) {
-        instance = parent.__vueParentComponent ||
-                   parent.__vnode?.component ||
-                   parent.__vue__ ||
-                   parent._vnode?.component;
-
-        if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
-          instance = findComponentViaDevtoolsHook(parent, window.__VUE_DEVTOOLS_GLOBAL_HOOK__);
-        }
-
-        parent = parent.parentElement;
-        depth++;
       }
     }
 
