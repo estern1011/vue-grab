@@ -6,6 +6,12 @@ dist/
 *.js.map
 *.d.ts.map
 
+# Old JavaScript files in root (replaced by TypeScript)
+/constants.js
+/content.js
+/injected.js
+/popup.js
+
 # IDE / Editor
 .vscode/
 .idea/
