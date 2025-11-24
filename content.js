@@ -247,6 +247,13 @@ function handleClick(e) {
     pendingAction = 'copy';
   }
 
+  // Ensure we have the clicked element (in case mouseout fired)
+  if (!hoveredElement && e.target) {
+    hoveredElement = e.target;
+    const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
+    hoveredElement.setAttribute('data-vue-grab-id', elementId);
+  }
+
   extractCurrentComponent();
 }
 
@@ -280,11 +287,14 @@ function handleKeyDown(e) {
 
 // Extract the currently selected/navigated component
 function extractCurrentComponent() {
-  if (currentHierarchyIndex >= 0 && currentHierarchy.length > 0) {
-    // Extract the navigated component (might be a parent)
+  // If user has navigated to a specific component in hierarchy, extract that
+  if (currentHierarchyIndex >= 0 && currentHierarchy && currentHierarchy.length > 0) {
     window.postMessage({ type: 'VUE_GRAB_EXTRACT_CURRENT' }, '*');
-  } else if (hoveredElement) {
-    // Fall back to extracting the hovered element
+    return;
+  }
+
+  // Otherwise extract from the hovered element
+  if (hoveredElement) {
     const elementId = hoveredElement.getAttribute('data-vue-grab-id') ||
                       'vue-grab-' + Math.random().toString(36).substr(2, 9);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
@@ -292,7 +302,14 @@ function extractCurrentComponent() {
       type: 'VUE_GRAB_EXTRACT',
       elementId: elementId
     }, '*');
+    return;
   }
+
+  // No element to extract from - show error and deactivate
+  showToast('No element selected. Try hovering over a component first.', 'error');
+  pendingAction = null;
+  deactivate();
+  isActive = false;
 }
 
 function copyToClipboard(data) {

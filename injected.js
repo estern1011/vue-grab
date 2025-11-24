@@ -179,16 +179,14 @@
   function getVueComponentInfo(element) {
     let instance = null;
 
-    // Strategy: Find the CLOSEST component to this element by walking up the DOM
-    // and checking each element for Vue component attachment
-
+    // Strategy 1: Walk up DOM to find the IMMEDIATE component that owns this element
+    // This is more reliable than top-down traversal for finding the closest component
     let currentEl = element;
     let depth = 0;
     const maxDepth = 100;
 
     while (currentEl && depth < maxDepth) {
       // Check for Vue 3 component on this element
-      // __vueParentComponent is the component that has this element as its root
       if (currentEl.__vueParentComponent) {
         instance = currentEl.__vueParentComponent;
         break;
@@ -216,7 +214,16 @@
       depth++;
     }
 
-    // Fallback: Try DevTools hook if still not found
+    // Strategy 2: If DOM walking finds a component, verify it's the deepest one
+    // by checking if any child component's element matches better
+    if (instance) {
+      const deeperInstance = findDeepestChildContaining(instance, element);
+      if (deeperInstance && deeperInstance !== instance) {
+        instance = deeperInstance;
+      }
+    }
+
+    // Strategy 3: Use DevTools hook as fallback for top-down search
     if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
       const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
       if (hook.apps && hook.apps.size > 0) {
@@ -230,6 +237,128 @@
       name: getComponentName(instance),
       instance
     };
+  }
+
+  // Find the deepest child component that contains the target element
+  function findDeepestChildContaining(instance, targetElement, visited = new Set()) {
+    if (!instance || visited.has(instance)) return null;
+    visited.add(instance);
+
+    let deepest = null;
+
+    // Check all child components
+    const children = getChildComponents(instance);
+    for (const child of children) {
+      if (componentContainsElement(child, targetElement)) {
+        // This child contains the target, but check if any of ITS children are deeper
+        const deeper = findDeepestChildContaining(child, targetElement, visited);
+        deepest = deeper || child;
+        break; // We found the branch, no need to check siblings
+      }
+    }
+
+    return deepest;
+  }
+
+  // Get all immediate child components of an instance
+  function getChildComponents(instance) {
+    const children = [];
+    const visited = new Set();
+
+    function collectFromVNode(vnode) {
+      if (!vnode || visited.has(vnode)) return;
+      visited.add(vnode);
+
+      // If this vnode is a component, add it
+      if (vnode.component && !children.includes(vnode.component)) {
+        children.push(vnode.component);
+        return; // Don't traverse into component's children here
+      }
+
+      // Traverse children
+      if (Array.isArray(vnode.children)) {
+        for (const child of vnode.children) {
+          if (child && typeof child === 'object') {
+            collectFromVNode(child);
+          }
+        }
+      }
+
+      // Traverse dynamic children
+      if (Array.isArray(vnode.dynamicChildren)) {
+        for (const child of vnode.dynamicChildren) {
+          if (child && typeof child === 'object') {
+            collectFromVNode(child);
+          }
+        }
+      }
+    }
+
+    // Vue 3: traverse subTree
+    if (instance.subTree) {
+      collectFromVNode(instance.subTree);
+    }
+
+    // Vue 2: use $children
+    if (instance.$children) {
+      children.push(...instance.$children);
+    }
+
+    return children;
+  }
+
+  // Check if a component's rendered DOM contains the target element
+  function componentContainsElement(instance, targetElement) {
+    // Get all possible root elements for this component
+    const elements = getComponentElements(instance);
+
+    for (const el of elements) {
+      if (el === targetElement) return true;
+      if (el && el.contains && el.contains(targetElement)) return true;
+    }
+
+    return false;
+  }
+
+  // Get all DOM elements that a component renders to
+  function getComponentElements(instance) {
+    const elements = [];
+
+    // Vue 3
+    if (instance.subTree) {
+      collectElements(instance.subTree, elements);
+    }
+
+    // Direct el reference
+    const directEl = instance.vnode?.el || instance.$el;
+    if (directEl && !elements.includes(directEl)) {
+      elements.push(directEl);
+    }
+
+    return elements;
+  }
+
+  // Collect DOM elements from a vnode tree
+  function collectElements(vnode, elements) {
+    if (!vnode) return;
+
+    // If vnode has an element, add it
+    if (vnode.el && vnode.el.nodeType === 1) {
+      if (!elements.includes(vnode.el)) {
+        elements.push(vnode.el);
+      }
+    }
+
+    // For fragments (type is Symbol), collect from children
+    if (typeof vnode.type === 'symbol' || vnode.type === null) {
+      if (Array.isArray(vnode.children)) {
+        for (const child of vnode.children) {
+          if (child && typeof child === 'object') {
+            collectElements(child, elements);
+          }
+        }
+      }
+    }
   }
 
   function findComponentViaDevtoolsHook(element, hook) {
@@ -251,8 +380,11 @@
           }
 
           if (rootInstance) {
-            const found = findComponentOwningElement(rootInstance, element);
-            if (found) return found;
+            // Check if root contains element, then find deepest child
+            if (componentContainsElement(rootInstance, element)) {
+              const deepest = findDeepestChildContaining(rootInstance, element);
+              return deepest || rootInstance;
+            }
           }
         }
       }
@@ -269,65 +401,6 @@
     } catch (e) {
       console.debug('Vue Grab: Error accessing devtools hook:', e);
     }
-    return null;
-  }
-
-  function findComponentOwningElement(instance, targetElement, visited = new Set()) {
-    if (!instance || visited.has(instance)) return null;
-    visited.add(instance);
-
-    const el = instance.vnode?.el || instance.subTree?.el || instance.$el;
-
-    if (el && (el === targetElement || (el.contains && el.contains(targetElement)))) {
-      const childComponent = findInChildren(instance, targetElement, visited);
-      if (childComponent) return childComponent;
-      return instance;
-    }
-
-    return null;
-  }
-
-  function findInChildren(instance, targetElement, visited) {
-    if (instance.subTree) {
-      const found = searchVNodeTree(instance.subTree, targetElement, visited);
-      if (found) return found;
-    }
-
-    if (instance.$children) {
-      for (const child of instance.$children) {
-        const found = findComponentOwningElement(child, targetElement, visited);
-        if (found) return found;
-      }
-    }
-
-    return null;
-  }
-
-  function searchVNodeTree(vnode, targetElement, visited) {
-    if (!vnode) return null;
-
-    if (vnode.component) {
-      const found = findComponentOwningElement(vnode.component, targetElement, visited);
-      if (found) return found;
-    }
-
-    if (vnode.children) {
-      const children = Array.isArray(vnode.children) ? vnode.children : [];
-      for (const child of children) {
-        if (child && typeof child === 'object') {
-          const found = searchVNodeTree(child, targetElement, visited);
-          if (found) return found;
-        }
-      }
-    }
-
-    if (vnode.dynamicChildren) {
-      for (const child of vnode.dynamicChildren) {
-        const found = searchVNodeTree(child, targetElement, visited);
-        if (found) return found;
-      }
-    }
-
     return null;
   }
 
