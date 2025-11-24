@@ -3,6 +3,31 @@ let isActive = false;
 let hoveredElement = null;
 let activeIndicator = null;
 let lastComponentData = null;
+let currentHierarchy = null;
+let currentHierarchyIndex = -1;
+let breadcrumbElement = null;
+let selectedEditor = 'cursor'; // Default editor, will be loaded from storage
+
+// Load saved editor preference
+if (chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get(['selectedEditor'], (result) => {
+    if (result.selectedEditor) {
+      selectedEditor = result.selectedEditor;
+    }
+  });
+}
+
+// IDE configurations for direct opening
+const IDE_CONFIG = {
+  cursor: {
+    name: 'Cursor',
+    buildUrl: (filePath) => `cursor://file/${filePath || ''}`
+  },
+  windsurf: {
+    name: 'Windsurf',
+    buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
+  }
+};
 
 // Inject script into page context to access Vue internals
 // Content scripts run in isolated world and can't access page JS variables directly
@@ -23,6 +48,9 @@ if (document.head || document.documentElement) {
   document.addEventListener('DOMContentLoaded', injectPageScript);
 }
 
+// Track pending action for keyboard shortcuts
+let pendingAction = null; // 'copy' or 'editor'
+
 // Listen for messages from injected script
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
@@ -31,21 +59,68 @@ window.addEventListener('message', (event) => {
     const componentData = event.data.data;
     if (componentData) {
       lastComponentData = componentData;
-      copyToClipboard(componentData);
-      showToast('✓ Component data copied to clipboard!', 'success');
+
+      // Handle based on pending action
+      if (pendingAction === 'editor') {
+        // Copy to clipboard AND open in editor
+        copyToClipboard(componentData);
+        openInEditor(componentData);
+        showToast(`✓ Copied and opening in ${IDE_CONFIG[selectedEditor].name}...`, 'success');
+      } else {
+        // Default: just copy to clipboard
+        copyToClipboard(componentData);
+        showToast('✓ Component data copied to clipboard!', 'success');
+      }
+
+      pendingAction = null;
       deactivate();
       isActive = false;
     } else {
       showToast(event.data.error || 'No Vue component found', 'error');
+      pendingAction = null;
     }
   } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
     // Response from hover detection
     if (event.data.info && hoveredElement) {
       hoveredElement.classList.add('vue-grab-highlight');
       hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
+
+      // Update hierarchy info
+      currentHierarchy = event.data.info.hierarchy || [];
+      currentHierarchyIndex = event.data.info.currentIndex ?? -1;
+      updateBreadcrumb();
+    }
+  } else if (event.data.type === 'VUE_GRAB_NAVIGATION_RESULT') {
+    // Response from parent/child navigation
+    if (event.data.info) {
+      currentHierarchy = event.data.info.hierarchy || [];
+      currentHierarchyIndex = event.data.info.currentIndex ?? -1;
+
+      // Update the component name display
+      if (hoveredElement) {
+        hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
+      }
+      updateBreadcrumb();
+    } else if (event.data.error) {
+      showToast(event.data.error, 'error');
     }
   }
 });
+
+// Open component in configured editor
+function openInEditor(componentData) {
+  const filePath = componentData?.filePath;
+  const config = IDE_CONFIG[selectedEditor];
+
+  if (config && filePath) {
+    const url = config.buildUrl(filePath);
+    try {
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('Vue Grab: Could not open editor:', e);
+    }
+  }
+}
 
 // Initialize Chrome message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -61,6 +136,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ isActive, hasData: lastComponentData !== null });
   } else if (request.action === 'getLastData') {
     sendResponse({ data: lastComponentData });
+  } else if (request.action === 'setEditor') {
+    // Update selected editor from popup
+    selectedEditor = request.editor;
+    sendResponse({ success: true });
   } else if (request.action === 'formatAndDownload') {
     if (lastComponentData) {
       triggerDownload(lastComponentData);
@@ -94,7 +173,12 @@ function deactivate() {
     hoveredElement.removeAttribute('data-vue-grab-id');
   }
 
+  // Reset hierarchy state
+  currentHierarchy = null;
+  currentHierarchyIndex = -1;
+
   hideActiveIndicator();
+  hideBreadcrumb();
 }
 
 function handleMouseOver(e) {
@@ -122,6 +206,11 @@ function handleMouseOut(e) {
     hoveredElement.removeAttribute('data-vue-grab-id');
     hoveredElement = null;
   }
+
+  // Reset hierarchy when mouse leaves element
+  currentHierarchy = null;
+  currentHierarchyIndex = -1;
+  hideBreadcrumb();
 }
 
 function handleClick(e) {
@@ -130,24 +219,72 @@ function handleClick(e) {
   e.preventDefault();
   e.stopPropagation();
 
-  const element = e.target;
-
-  // Create a unique identifier for this element
-  const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
-  element.setAttribute('data-vue-grab-id', elementId);
-
-  // Ask injected script to extract Vue component data
-  window.postMessage({
-    type: 'VUE_GRAB_EXTRACT',
-    elementId: elementId
-  }, '*');
+  // Set default action for click
+  pendingAction = 'copy';
+  extractCurrentComponent();
 }
 
 function handleKeyDown(e) {
-  if (e.key === 'Escape' && isActive) {
+  if (!isActive) return;
+
+  // Escape - deactivate
+  if (e.key === 'Escape') {
     deactivate();
     isActive = false;
     showToast('Vue Grab deactivated', 'success');
+    return;
+  }
+
+  // Check for Cmd/Ctrl + C shortcuts (copy to clipboard)
+  // Cmd+C or Ctrl+C - extract and copy
+  if ((e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey && hoveredElement) {
+    e.preventDefault();
+    e.stopPropagation();
+    pendingAction = 'copy';
+    extractCurrentComponent();
+    return;
+  }
+
+  // Cmd+Shift+C or Ctrl+Shift+C - extract, copy, and open in editor
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'C' && hoveredElement) {
+    e.preventDefault();
+    e.stopPropagation();
+    pendingAction = 'editor';
+    extractCurrentComponent();
+    return;
+  }
+
+  // Option/Alt + Arrow Up - navigate to parent component
+  if (e.altKey && e.key === 'ArrowUp') {
+    e.preventDefault();
+    e.stopPropagation();
+    window.postMessage({ type: 'VUE_GRAB_NAVIGATE_PARENT' }, '*');
+    return;
+  }
+
+  // Option/Alt + Arrow Down - navigate to child component
+  if (e.altKey && e.key === 'ArrowDown') {
+    e.preventDefault();
+    e.stopPropagation();
+    window.postMessage({ type: 'VUE_GRAB_NAVIGATE_CHILD' }, '*');
+    return;
+  }
+}
+
+// Extract the currently selected/navigated component
+function extractCurrentComponent() {
+  if (currentHierarchyIndex >= 0 && currentHierarchy.length > 0) {
+    // Extract the navigated component (might be a parent)
+    window.postMessage({ type: 'VUE_GRAB_EXTRACT_CURRENT' }, '*');
+  } else if (hoveredElement) {
+    // Fall back to extracting the hovered element
+    const elementId = hoveredElement.getAttribute('data-vue-grab-id') ||
+                      'vue-grab-' + Math.random().toString(36).substr(2, 9);
+    hoveredElement.setAttribute('data-vue-grab-id', elementId);
+    window.postMessage({
+      type: 'VUE_GRAB_EXTRACT',
+      elementId: elementId
+    }, '*');
   }
 }
 
@@ -317,6 +454,64 @@ ${data.methods?.length ? data.methods.join(', ') : 'None'}
     }
   }
 
+  // Add Vue Router section
+  if (data.routerState) {
+    output += `\n## Vue Router State\n\n`;
+    output += `- **Path:** ${data.routerState.path}\n`;
+    if (data.routerState.name) {
+      output += `- **Route Name:** ${data.routerState.name}\n`;
+    }
+    output += `- **Full Path:** ${data.routerState.fullPath}\n`;
+
+    if (data.routerState.params && Object.keys(data.routerState.params).length > 0) {
+      output += `\n**Params:**\n\`\`\`json\n${JSON.stringify(data.routerState.params, null, 2)}\n\`\`\`\n`;
+    }
+
+    if (data.routerState.query && Object.keys(data.routerState.query).length > 0) {
+      output += `\n**Query:**\n\`\`\`json\n${JSON.stringify(data.routerState.query, null, 2)}\n\`\`\`\n`;
+    }
+
+    if (data.routerState.meta && Object.keys(data.routerState.meta).length > 0) {
+      output += `\n**Meta:**\n\`\`\`json\n${JSON.stringify(data.routerState.meta, null, 2)}\n\`\`\`\n`;
+    }
+
+    if (data.routerState.matched && data.routerState.matched.length > 0) {
+      output += `\n**Matched Routes:** ${data.routerState.matched.map(m => m.name || m.path).join(' → ')}\n`;
+    }
+  }
+
+  // Add Emitted Events section
+  if (data.emittedEvents && data.emittedEvents.length > 0) {
+    output += `\n## Emitted Events\n`;
+    output += `${data.emittedEvents.join(', ')}\n`;
+  }
+
+  // Add Provide/Inject section
+  if (data.providedValues || data.injectedValues) {
+    output += `\n## Provide/Inject\n\n`;
+
+    if (data.providedValues && Object.keys(data.providedValues).length > 0) {
+      output += `**Provided by this component:**\n\`\`\`json\n${JSON.stringify(data.providedValues, null, 2)}\n\`\`\`\n\n`;
+    }
+
+    if (data.injectedValues && Object.keys(data.injectedValues).length > 0) {
+      output += `**Injected into this component:**\n\`\`\`json\n${JSON.stringify(data.injectedValues, null, 2)}\n\`\`\`\n`;
+    }
+  }
+
+  // Add Slots section
+  if (data.slots && Object.keys(data.slots).length > 0) {
+    output += `\n## Slots\n\n`;
+    for (const [slotName, slotContent] of Object.entries(data.slots)) {
+      output += `### ${slotName === 'default' ? 'Default Slot' : `Slot: ${slotName}`}\n`;
+      if (typeof slotContent === 'string') {
+        output += `${slotContent}\n\n`;
+      } else {
+        output += `\`\`\`json\n${JSON.stringify(slotContent, null, 2)}\n\`\`\`\n\n`;
+      }
+    }
+  }
+
   // Add template section
   if (data.template) {
     output += `\n## Template
@@ -349,8 +544,13 @@ function showActiveIndicator() {
   activeIndicator = document.createElement('div');
   activeIndicator.className = 'vue-grab-active-indicator';
   activeIndicator.innerHTML = `
-    Vue Grab Active
-    <span class="hint">Press Esc to cancel</span>
+    <div class="vue-grab-indicator-title">Vue Grab Active</div>
+    <div class="vue-grab-indicator-shortcuts">
+      <span class="shortcut"><kbd>⌘C</kbd> Copy</span>
+      <span class="shortcut"><kbd>⌘⇧C</kbd> Copy + Editor</span>
+      <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
+      <span class="shortcut"><kbd>Esc</kbd> Cancel</span>
+    </div>
   `;
   document.body.appendChild(activeIndicator);
 }
@@ -359,6 +559,42 @@ function hideActiveIndicator() {
   if (activeIndicator) {
     activeIndicator.remove();
     activeIndicator = null;
+  }
+}
+
+// Breadcrumb UI for component hierarchy
+function updateBreadcrumb() {
+  if (!currentHierarchy || currentHierarchy.length === 0) {
+    hideBreadcrumb();
+    return;
+  }
+
+  if (!breadcrumbElement) {
+    breadcrumbElement = document.createElement('div');
+    breadcrumbElement.className = 'vue-grab-breadcrumb';
+    document.body.appendChild(breadcrumbElement);
+  }
+
+  // Build breadcrumb HTML
+  const items = currentHierarchy.map((name, index) => {
+    const isActive = index === currentHierarchyIndex;
+    const classes = ['vue-grab-breadcrumb-item'];
+    if (isActive) classes.push('active');
+    if (index < currentHierarchyIndex) classes.push('parent');
+
+    return `<span class="${classes.join(' ')}">${name}</span>`;
+  });
+
+  breadcrumbElement.innerHTML = `
+    <div class="vue-grab-breadcrumb-path">${items.join(' → ')}</div>
+    <div class="vue-grab-breadcrumb-hint">⌥↑/↓ to navigate</div>
+  `;
+}
+
+function hideBreadcrumb() {
+  if (breadcrumbElement) {
+    breadcrumbElement.remove();
+    breadcrumbElement = null;
   }
 }
 

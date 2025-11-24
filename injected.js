@@ -2,6 +2,10 @@
 (function() {
   'use strict';
 
+  // Track current component and its hierarchy for navigation
+  let currentComponentStack = [];
+  let currentStackIndex = -1;
+
   // Listen for messages from content script
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
@@ -10,9 +14,21 @@
       const element = document.querySelector(`[data-vue-grab-id="${event.data.elementId}"]`);
       if (element) {
         const info = getVueComponentInfo(element);
+        // Build component hierarchy for this element
+        if (info) {
+          currentComponentStack = buildComponentHierarchy(info.instance);
+          currentStackIndex = currentComponentStack.length - 1;
+        } else {
+          currentComponentStack = [];
+          currentStackIndex = -1;
+        }
         window.postMessage({
           type: 'VUE_GRAB_COMPONENT_INFO',
-          info: info ? { name: info.name } : null
+          info: info ? {
+            name: info.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          } : null
         }, '*');
       }
     } else if (event.data.type === 'VUE_GRAB_EXTRACT') {
@@ -38,8 +54,82 @@
           error: error
         }, '*');
       }
+    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_PARENT') {
+      // Navigate to parent component in hierarchy
+      if (currentStackIndex > 0) {
+        currentStackIndex--;
+        const parentComponent = currentComponentStack[currentStackIndex];
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: {
+            name: parentComponent.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          }
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: null,
+          error: 'Already at root component'
+        }, '*');
+      }
+    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_CHILD') {
+      // Navigate back to child component in hierarchy
+      if (currentStackIndex < currentComponentStack.length - 1) {
+        currentStackIndex++;
+        const childComponent = currentComponentStack[currentStackIndex];
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: {
+            name: childComponent.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          }
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: null,
+          error: 'Already at clicked element'
+        }, '*');
+      }
+    } else if (event.data.type === 'VUE_GRAB_EXTRACT_CURRENT') {
+      // Extract the currently navigated component (not necessarily the clicked element)
+      if (currentStackIndex >= 0 && currentComponentStack[currentStackIndex]) {
+        const componentInfo = currentComponentStack[currentStackIndex];
+        const data = extractFromInstance(componentInfo.instance);
+        window.postMessage({
+          type: 'VUE_GRAB_COMPONENT_DATA',
+          data: data,
+          error: data ? null : 'Could not extract component data'
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_COMPONENT_DATA',
+          data: null,
+          error: 'No component selected'
+        }, '*');
+      }
     }
   });
+
+  // Build hierarchy from root to current component
+  function buildComponentHierarchy(instance) {
+    const hierarchy = [];
+    let current = instance;
+
+    while (current) {
+      hierarchy.unshift({
+        name: getComponentName(current),
+        instance: current
+      });
+      // Get parent component
+      current = current.parent || current.$parent;
+    }
+
+    return hierarchy;
+  }
 
   // Check if Vue is present on the page
   function detectVuePresence() {
@@ -250,8 +340,23 @@
 
     const instance = info.instance;
 
+    const data = extractFromInstance(instance);
+
+    // Add element info
+    data.element = {
+      tagName: element.tagName.toLowerCase(),
+      id: element.id || null,
+      classes: Array.from(element.classList).filter(c => !c.startsWith('vue-grab')),
+      attributes: getElementAttributes(element)
+    };
+
+    return data;
+  }
+
+  // Extract component data from an instance (used for both direct extraction and navigation)
+  function extractFromInstance(instance) {
     const data = {
-      componentName: info.name,
+      componentName: getComponentName(instance),
       filePath: null,
       props: null,
       data: null,
@@ -262,12 +367,12 @@
       piniaStores: null,
       vuexStore: null,
       tanstackQueries: null,
-      element: {
-        tagName: element.tagName.toLowerCase(),
-        id: element.id || null,
-        classes: Array.from(element.classList).filter(c => !c.startsWith('vue-grab')),
-        attributes: getElementAttributes(element)
-      }
+      routerState: null,
+      providedValues: null,
+      injectedValues: null,
+      emittedEvents: null,
+      slots: null,
+      element: null
     };
 
     // Vue 3
@@ -313,7 +418,310 @@
     data.vuexStore = extractVuexStore(instance);
     data.tanstackQueries = extractTanStackQueries(instance);
 
+    // Extract new features
+    data.routerState = extractRouterState(instance);
+    data.providedValues = extractProvidedValues(instance);
+    data.injectedValues = extractInjectedValues(instance);
+    data.emittedEvents = extractEmittedEvents(instance);
+    data.slots = extractSlots(instance);
+
     return data;
+  }
+
+  // Extract Vue Router state
+  function extractRouterState(instance) {
+    try {
+      let route = null;
+      let router = null;
+
+      // Vue 3 - Composition API
+      if (instance.proxy) {
+        route = instance.proxy.$route;
+        router = instance.proxy.$router;
+      }
+
+      // Vue 3 - App context
+      if (!route && instance.appContext?.config?.globalProperties) {
+        route = instance.appContext.config.globalProperties.$route;
+        router = instance.appContext.config.globalProperties.$router;
+      }
+
+      // Vue 2
+      if (!route && instance.$route) {
+        route = instance.$route;
+        router = instance.$router;
+      }
+
+      // Check setupState for useRoute/useRouter
+      if (!route && instance.setupState) {
+        for (const key of Object.keys(instance.setupState)) {
+          const value = instance.setupState[key];
+          if (value && value.path !== undefined && value.params !== undefined) {
+            route = value;
+            break;
+          }
+        }
+      }
+
+      if (!route) return null;
+
+      return {
+        path: route.path,
+        name: route.name || null,
+        fullPath: route.fullPath,
+        params: serializeData(route.params),
+        query: serializeData(route.query),
+        hash: route.hash || null,
+        meta: serializeData(route.meta),
+        matched: route.matched?.map(m => ({
+          path: m.path,
+          name: m.name,
+          components: Object.keys(m.components || {})
+        })) || [],
+        redirectedFrom: route.redirectedFrom?.fullPath || null
+      };
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting router state:', e);
+      return null;
+    }
+  }
+
+  // Extract values provided by this component
+  function extractProvidedValues(instance) {
+    try {
+      let provided = null;
+
+      // Vue 3
+      if (instance.provides) {
+        // Get only values provided by THIS component, not inherited
+        const parentProvides = instance.parent?.provides || {};
+        provided = {};
+
+        for (const key of Object.keys(instance.provides)) {
+          // Only include if it's different from parent's provides (meaning this component provided it)
+          if (instance.provides[key] !== parentProvides[key]) {
+            provided[key] = serializeData(instance.provides[key]);
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance._provided) {
+        provided = serializeData(instance._provided);
+      }
+
+      return provided && Object.keys(provided).length > 0 ? provided : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting provided values:', e);
+      return null;
+    }
+  }
+
+  // Extract values injected into this component
+  function extractInjectedValues(instance) {
+    try {
+      const injected = {};
+
+      // Vue 3 - Check inject option
+      if (instance.type?.inject) {
+        const injectOptions = instance.type.inject;
+        const injectKeys = Array.isArray(injectOptions)
+          ? injectOptions
+          : Object.keys(injectOptions);
+
+        for (const key of injectKeys) {
+          if (instance.proxy && key in instance.proxy) {
+            injected[key] = serializeData(instance.proxy[key]);
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance.$options?.inject) {
+        const injectOptions = instance.$options.inject;
+        const injectKeys = Array.isArray(injectOptions)
+          ? injectOptions
+          : Object.keys(injectOptions);
+
+        for (const key of injectKeys) {
+          if (key in instance) {
+            injected[key] = serializeData(instance[key]);
+          }
+        }
+      }
+
+      return Object.keys(injected).length > 0 ? injected : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting injected values:', e);
+      return null;
+    }
+  }
+
+  // Extract emitted events this component can emit
+  function extractEmittedEvents(instance) {
+    try {
+      const events = [];
+
+      // Vue 3 - emits option
+      if (instance.type?.emits) {
+        const emits = instance.type.emits;
+        if (Array.isArray(emits)) {
+          events.push(...emits);
+        } else if (typeof emits === 'object') {
+          events.push(...Object.keys(emits));
+        }
+      }
+
+      // Vue 3 - Check emitsOptions on instance
+      if (instance.emitsOptions) {
+        const emits = instance.emitsOptions;
+        if (typeof emits === 'object') {
+          events.push(...Object.keys(emits).filter(e => !events.includes(e)));
+        }
+      }
+
+      // Vue 2
+      if (instance.$options?.emits) {
+        const emits = instance.$options.emits;
+        if (Array.isArray(emits)) {
+          events.push(...emits.filter(e => !events.includes(e)));
+        } else if (typeof emits === 'object') {
+          events.push(...Object.keys(emits).filter(e => !events.includes(e)));
+        }
+      }
+
+      // Check for $emit calls in component source (heuristic)
+      const componentCode = getComponentSourceCode(instance);
+      if (componentCode) {
+        const emitPattern = /\$emit\(['"]([^'"]+)['"]/g;
+        const emit2Pattern = /emit\(['"]([^'"]+)['"]/g;
+        let match;
+
+        while ((match = emitPattern.exec(componentCode)) !== null) {
+          if (!events.includes(match[1])) {
+            events.push(match[1]);
+          }
+        }
+
+        while ((match = emit2Pattern.exec(componentCode)) !== null) {
+          if (!events.includes(match[1])) {
+            events.push(match[1]);
+          }
+        }
+      }
+
+      return events.length > 0 ? events : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting emitted events:', e);
+      return null;
+    }
+  }
+
+  // Extract slot content
+  function extractSlots(instance) {
+    try {
+      const slots = {};
+
+      // Vue 3
+      if (instance.slots) {
+        for (const slotName of Object.keys(instance.slots)) {
+          const slotFn = instance.slots[slotName];
+          if (typeof slotFn === 'function') {
+            try {
+              const vnodes = slotFn();
+              slots[slotName] = serializeVNodes(vnodes);
+            } catch (e) {
+              slots[slotName] = '[Slot function - requires props]';
+            }
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance.$slots) {
+        for (const slotName of Object.keys(instance.$slots)) {
+          const vnodes = instance.$slots[slotName];
+          slots[slotName] = serializeVNodes(vnodes);
+        }
+      }
+
+      // Vue 2 scoped slots
+      if (instance.$scopedSlots) {
+        for (const slotName of Object.keys(instance.$scopedSlots)) {
+          if (!slots[slotName]) {
+            slots[slotName] = '[Scoped slot]';
+          }
+        }
+      }
+
+      return Object.keys(slots).length > 0 ? slots : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting slots:', e);
+      return null;
+    }
+  }
+
+  // Serialize VNodes to readable format
+  function serializeVNodes(vnodes) {
+    if (!vnodes) return null;
+
+    const nodes = Array.isArray(vnodes) ? vnodes : [vnodes];
+    const result = [];
+
+    for (const vnode of nodes) {
+      if (!vnode) continue;
+
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        result.push({ type: 'text', content: String(vnode) });
+        continue;
+      }
+
+      // Handle Vue 3 vnodes
+      if (vnode.type) {
+        const nodeInfo = {
+          type: typeof vnode.type === 'string'
+            ? vnode.type
+            : vnode.type?.name || vnode.type?.__name || 'Component'
+        };
+
+        if (vnode.props && Object.keys(vnode.props).length > 0) {
+          nodeInfo.props = serializeData(vnode.props);
+        }
+
+        if (vnode.children) {
+          if (typeof vnode.children === 'string') {
+            nodeInfo.content = vnode.children;
+          } else if (Array.isArray(vnode.children)) {
+            nodeInfo.children = serializeVNodes(vnode.children);
+          }
+        }
+
+        result.push(nodeInfo);
+      }
+
+      // Handle Vue 2 vnodes
+      if (vnode.tag) {
+        const nodeInfo = {
+          type: vnode.componentOptions?.tag || vnode.tag
+        };
+
+        if (vnode.data?.attrs) {
+          nodeInfo.props = serializeData(vnode.data.attrs);
+        }
+
+        if (vnode.children) {
+          nodeInfo.children = serializeVNodes(vnode.children);
+        }
+
+        if (vnode.text) {
+          nodeInfo.content = vnode.text;
+        }
+
+        result.push(nodeInfo);
+      }
+    }
+
+    return result.length > 0 ? result : null;
   }
 
   function getComponentName(instance) {

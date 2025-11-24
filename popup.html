@@ -126,39 +126,84 @@
       cursor: not-allowed;
     }
 
-    .keyboard-hint {
+    .editor-section {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .editor-section label {
+      font-size: 12px;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    .editor-section select {
+      flex: 1;
+    }
+
+    .keyboard-hints {
       margin-top: 12px;
-      padding: 8px;
+      padding: 10px;
       background: #f8f9fa;
       border-radius: 4px;
       font-size: 11px;
       color: #666;
-      text-align: center;
+    }
+
+    .keyboard-hints .hint-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #333;
+    }
+
+    .keyboard-hints .hint-row {
+      margin: 4px 0;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .keyboard-hints kbd {
+      background: #e9ecef;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 10px;
+      border: 1px solid #dee2e6;
     }
   </style>
 </head>
 <body>
   <h2>🎯 Vue Grab</h2>
-  <p>Click any Vue component to extract its context. Data is copied to clipboard automatically.</p>
+  <p>Click any Vue component to extract its context for AI coding assistants.</p>
+
+  <div class="editor-section">
+    <label for="ideSelect">Default Editor:</label>
+    <select id="ideSelect">
+      <option value="cursor">Cursor</option>
+      <option value="windsurf">Windsurf</option>
+    </select>
+  </div>
 
   <button id="toggleBtn">Start Grabbing</button>
 
   <div id="ideSection" class="ide-section">
-    <div class="ide-row">
-      <select id="ideSelect">
-        <option value="cursor">Cursor</option>
-        <option value="windsurf">Windsurf</option>
-      </select>
-      <button id="openIdeBtn">Open</button>
-    </div>
+    <button id="openIdeBtn">Open in Editor</button>
   </div>
 
   <div id="status" class="status inactive">
     Click the button to activate
   </div>
 
-  <div class="keyboard-hint">
-    Press <strong>Esc</strong> to cancel
+  <div class="keyboard-hints">
+    <div class="hint-title">Keyboard Shortcuts</div>
+    <div class="hint-row"><kbd>⌘C</kbd> / <kbd>Ctrl+C</kbd> Copy to clipboard</div>
+    <div class="hint-row"><kbd>⌘⇧C</kbd> / <kbd>Ctrl+Shift+C</kbd> Copy + Open editor</div>
+    <div class="hint-row"><kbd>⌥↑</kbd> / <kbd>Alt+↑</kbd> Navigate to parent</div>
+    <div class="hint-row"><kbd>⌥↓</kbd> / <kbd>Alt+↓</kbd> Navigate to child</div>
+    <div class="hint-row"><kbd>Esc</kbd> Cancel</div>
   </div>
 
   <script src="popup.js"></script>

@@ -73,19 +73,87 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
   font-weight: 500;
+}
+
+.vue-grab-indicator-title {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
-.vue-grab-active-indicator::before {
+.vue-grab-indicator-title::before {
   content: '🎯';
   font-size: 16px;
 }
 
-.vue-grab-active-indicator .hint {
+.vue-grab-indicator-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 11px;
-  opacity: 0.9;
-  margin-left: 8px;
   font-weight: normal;
+  opacity: 0.95;
+}
+
+.vue-grab-indicator-shortcuts .shortcut {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vue-grab-indicator-shortcuts kbd {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+/* Breadcrumb for component hierarchy */
+.vue-grab-breadcrumb {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2c3e50;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  max-width: 80%;
+  text-align: center;
+}
+
+.vue-grab-breadcrumb-path {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  align-items: center;
+}
+
+.vue-grab-breadcrumb-item {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.vue-grab-breadcrumb-item.active {
+  background: #42b883;
+  font-weight: 600;
+}
+
+.vue-grab-breadcrumb-item.parent {
+  opacity: 0.7;
+}
+
+.vue-grab-breadcrumb-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  opacity: 0.7;
 }
