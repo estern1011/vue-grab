@@ -1,3 +1,23 @@
+/**
+ * Vue Grab - Content Script
+ *
+ * This is the main content script that runs in the extension's isolated world.
+ * It handles all UI elements and user interaction.
+ *
+ * Features:
+ * - Activation: Cmd+C (when no text selected) activates grab mode
+ * - Hover: Shows component name floating label and highlight outline
+ * - Click/Enter: Extracts component data to clipboard
+ * - Cmd+Click/Enter: Also opens component file in configured editor
+ * - Alt+Arrow: Navigate component hierarchy
+ * - Escape: Deactivate
+ *
+ * Communication with injected.js:
+ * - Posts messages to request component info/extraction
+ * - Receives responses with component data
+ * - See injected.js header for message type documentation
+ */
+
 // State
 let isActive = false;
 let hoveredElement = null;
@@ -110,16 +130,12 @@ window.addEventListener('message', (event) => {
       isActive = false;
     }
   } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
-    // Response from hover detection
-    const componentName = event.data.info?.name || 'Anonymous';
-    console.debug('Vue Grab: Component detected:', componentName, event.data.info);
-
+    // Response from hover detection - show component name and hierarchy
     if (event.data.info && hoveredElement) {
+      const componentName = event.data.info.name || 'Anonymous';
       hoveredElement.classList.add('vue-grab-highlight');
-      // Use floating label instead of data attribute (avoids overflow clipping)
       showFloatingLabel(hoveredElement, componentName);
 
-      // Update hierarchy info
       currentHierarchy = event.data.info.hierarchy || [];
       currentHierarchyIndex = event.data.info.currentIndex ?? -1;
       updateBreadcrumb();
@@ -249,10 +265,13 @@ function handleMouseOut(e) {
   hideBreadcrumb();
 }
 
+/**
+ * Handle click events during grab mode.
+ * Regular click = copy to clipboard
+ * Cmd/Ctrl+click = copy and open in editor
+ */
 function handleClick(e) {
   if (!isActive) return;
-
-  console.debug('Vue Grab: Click detected', { target: e.target, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
 
   e.preventDefault();
   e.stopPropagation();
@@ -260,40 +279,33 @@ function handleClick(e) {
   triggerExtraction(e.metaKey || e.ctrlKey, e.target);
 }
 
-// Shared extraction logic for click and Enter key
+/**
+ * Shared extraction logic for click and Enter key.
+ * @param {boolean} openInEditorMode - Whether to also open in editor
+ * @param {HTMLElement|null} targetElement - The clicked element (null for Enter key)
+ */
 function triggerExtraction(openInEditorMode, targetElement) {
-  console.debug('Vue Grab: Triggering extraction', { openInEditorMode, targetElement, hoveredElement });
+  pendingAction = openInEditorMode ? 'editor' : 'copy';
 
-  // Set pending action
-  if (openInEditorMode) {
-    pendingAction = 'editor';
-  } else {
-    pendingAction = 'copy';
-  }
-
-  // Ensure we have an element to extract from
+  // Use target element if hoveredElement is not set
   if (!hoveredElement && targetElement) {
     hoveredElement = targetElement;
   }
 
   if (!hoveredElement) {
-    console.debug('Vue Grab: No element to extract from');
     showToast('No element selected. Hover over an element first.', 'error');
     return;
   }
 
-  // Always ensure the element has an ID for extraction
+  // Ensure element has an ID for the injected script to find it
   if (!hoveredElement.getAttribute('data-vue-grab-id')) {
     const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
   }
 
-  console.debug('Vue Grab: Element ID:', hoveredElement.getAttribute('data-vue-grab-id'));
-
-  // Set a timeout to deactivate even if extraction fails
+  // Timeout safety: deactivate if extraction doesn't complete
   const extractionTimeout = setTimeout(() => {
     if (isActive) {
-      console.debug('Vue Grab: Extraction timed out');
       showToast('Extraction timed out. Try again.', 'error');
       pendingAction = null;
       deactivate();
@@ -301,16 +313,20 @@ function triggerExtraction(openInEditorMode, targetElement) {
     }
   }, 3000);
 
-  // Store timeout ID so we can clear it on successful extraction
   window._vueGrabExtractionTimeout = extractionTimeout;
-
   extractCurrentComponent();
 }
 
+/**
+ * Handle keyboard shortcuts during grab mode.
+ * - Escape: deactivate
+ * - Enter: extract and copy (Cmd+Enter for editor)
+ * - Alt+ArrowUp: navigate to parent component
+ * - Alt+ArrowDown: navigate to child component
+ */
 function handleKeyDown(e) {
   if (!isActive) return;
 
-  // Escape - deactivate
   if (e.key === 'Escape') {
     deactivate();
     isActive = false;
@@ -318,16 +334,13 @@ function handleKeyDown(e) {
     return;
   }
 
-  // Enter - extract and copy (Cmd+Enter for editor)
   if (e.key === 'Enter') {
     e.preventDefault();
     e.stopPropagation();
-    console.debug('Vue Grab: Enter key pressed', { metaKey: e.metaKey, ctrlKey: e.ctrlKey });
     triggerExtraction(e.metaKey || e.ctrlKey, null);
     return;
   }
 
-  // Option/Alt + Arrow Up - navigate to parent component
   if (e.altKey && e.key === 'ArrowUp') {
     e.preventDefault();
     e.stopPropagation();
@@ -335,7 +348,6 @@ function handleKeyDown(e) {
     return;
   }
 
-  // Option/Alt + Arrow Down - navigate to child component
   if (e.altKey && e.key === 'ArrowDown') {
     e.preventDefault();
     e.stopPropagation();

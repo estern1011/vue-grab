@@ -1,4 +1,31 @@
-// This script runs in the page context and can access Vue internals
+/**
+ * Vue Grab - Injected Script
+ *
+ * This script runs in the page context (not the extension's isolated world)
+ * so it can access Vue's internal properties on DOM elements.
+ *
+ * Architecture:
+ * - content.js (content script) handles UI and user interaction
+ * - injected.js (this file) accesses Vue internals and extracts component data
+ * - Communication is via window.postMessage()
+ *
+ * Message Types (content.js → injected.js):
+ * - VUE_GRAB_GET_INFO: Get component info for a hovered element
+ * - VUE_GRAB_EXTRACT: Extract full component data for an element
+ * - VUE_GRAB_EXTRACT_CURRENT: Extract data for the currently navigated component
+ * - VUE_GRAB_NAVIGATE_PARENT: Navigate up the component hierarchy
+ * - VUE_GRAB_NAVIGATE_CHILD: Navigate down the component hierarchy
+ *
+ * Response Types (injected.js → content.js):
+ * - VUE_GRAB_COMPONENT_INFO: Component name and hierarchy for hover display
+ * - VUE_GRAB_COMPONENT_DATA: Full extracted component data
+ * - VUE_GRAB_NAVIGATION_RESULT: Updated hierarchy after navigation
+ *
+ * Vue Detection:
+ * - Vue 3: Uses __vueParentComponent on DOM elements
+ * - Vue 2: Uses __vue__ on DOM elements
+ * - Fallback: Uses __VUE_DEVTOOLS_GLOBAL_HOOK__ for top-down traversal
+ */
 (function() {
   'use strict';
 
@@ -176,13 +203,22 @@
     return result;
   }
 
+  /**
+   * Find the Vue component that owns a given DOM element.
+   *
+   * Strategy:
+   * 1. Walk up the DOM tree collecting all components found via __vueParentComponent
+   * 2. For each candidate, search its children to find the deepest component containing the element
+   * 3. Fall back to DevTools hook for top-down search if DOM walking fails
+   *
+   * @param {HTMLElement} element - The DOM element to find the component for
+   * @returns {{name: string, instance: object}|null} - Component info or null
+   */
   function getVueComponentInfo(element) {
     let instance = null;
     let allCandidates = [];
 
-    console.debug('Vue Grab: Finding component for element:', element.tagName, element.className);
-
-    // Strategy 1: Walk up DOM to collect ALL components we find
+    // Walk up DOM to collect all Vue component instances we encounter
     let currentEl = element;
     let depth = 0;
     const maxDepth = 100;
@@ -190,25 +226,17 @@
     while (currentEl && depth < maxDepth) {
       let foundInstance = null;
 
-      // Check for Vue 3 component on this element
+      // Vue 3: __vueParentComponent is set on component root elements
       if (currentEl.__vueParentComponent) {
         foundInstance = currentEl.__vueParentComponent;
-        console.debug('Vue Grab: Found via __vueParentComponent at depth', depth, ':', getComponentName(foundInstance));
       }
-      // Check for vnode with component
+      // Vue 3 alternative: check vnode
       else if (currentEl.__vnode?.component) {
         foundInstance = currentEl.__vnode.component;
-        console.debug('Vue Grab: Found via __vnode.component at depth', depth, ':', getComponentName(foundInstance));
       }
-      // Check for Vue 2 component
+      // Vue 2: __vue__ is set on component root elements
       else if (currentEl.__vue__) {
         foundInstance = currentEl.__vue__;
-        console.debug('Vue Grab: Found via __vue__ at depth', depth, ':', getComponentName(foundInstance));
-      }
-      // Check fiber-like properties
-      else if (currentEl._vnode?.component) {
-        foundInstance = currentEl._vnode.component;
-        console.debug('Vue Grab: Found via _vnode.component at depth', depth, ':', getComponentName(foundInstance));
       }
 
       if (foundInstance && !allCandidates.includes(foundInstance)) {
@@ -219,77 +247,66 @@
       depth++;
     }
 
-    console.debug('Vue Grab: Found', allCandidates.length, 'candidate components:', allCandidates.map(c => getComponentName(c)));
-
-    // The first candidate (closest to element) is our starting point
+    // Start with the closest component (first found walking up)
     if (allCandidates.length > 0) {
       instance = allCandidates[0];
-      console.debug('Vue Grab: Starting with closest:', getComponentName(instance));
 
-      // But also check if any of the parent candidates have child components
-      // that contain our target element and are deeper
+      // Search each candidate's children for a deeper component containing the element
       for (const candidate of allCandidates) {
-        console.debug('Vue Grab: Checking children of', getComponentName(candidate));
-        const children = getChildComponents(candidate);
-        console.debug('Vue Grab: Children found:', children.length, children.map(c => getComponentName(c)));
-
         const deeperInstance = findDeepestChildContaining(candidate, element, new Set());
         if (deeperInstance) {
-          console.debug('Vue Grab: Found deeper child:', getComponentName(deeperInstance));
           instance = deeperInstance;
-          break; // Found the deepest, no need to check more parents
+          break;
         }
       }
     }
 
-    // Strategy 2: Use DevTools hook for top-down search if DOM walking failed
+    // Fallback: use DevTools hook for top-down traversal
     if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
-      console.debug('Vue Grab: Trying DevTools hook approach');
       const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
       if (hook.apps && hook.apps.size > 0) {
         instance = findComponentViaDevtoolsHook(element, hook);
       }
     }
 
-    if (!instance) {
-      console.debug('Vue Grab: No component found');
-      return null;
-    }
+    if (!instance) return null;
 
-    console.debug('Vue Grab: Final result:', getComponentName(instance));
     return {
       name: getComponentName(instance),
       instance
     };
   }
 
-  // Find the deepest child component that contains the target element
+  /**
+   * Recursively find the deepest child component that contains the target element.
+   * @param {object} instance - Vue component instance to search from
+   * @param {HTMLElement} targetElement - The element we're looking for
+   * @param {Set} visited - Set of already-visited instances (prevents infinite loops)
+   * @returns {object|null} - Deepest component instance or null
+   */
   function findDeepestChildContaining(instance, targetElement, visited = new Set()) {
     if (!instance || visited.has(instance)) return null;
     visited.add(instance);
 
-    let deepest = null;
-
-    // Check all child components
     const children = getChildComponents(instance);
-    for (const child of children) {
-      const childName = getComponentName(child);
-      const contains = componentContainsElement(child, targetElement);
-      console.debug('Vue Grab: Does', childName, 'contain target?', contains);
 
-      if (contains) {
-        // This child contains the target, but check if any of ITS children are deeper
+    for (const child of children) {
+      if (componentContainsElement(child, targetElement)) {
+        // Found a child that contains the element - recurse to find even deeper
         const deeper = findDeepestChildContaining(child, targetElement, visited);
-        deepest = deeper || child;
-        console.debug('Vue Grab: Deepest in this branch:', getComponentName(deepest));
-        break; // We found the branch, no need to check siblings
+        return deeper || child;
       }
     }
 
-    return deepest;
+    return null;
   }
 
-  // Get all immediate child components of an instance
+  /**
+   * Get all immediate child components of a Vue component instance.
+   * Traverses the vnode tree to find component children.
+   * @param {object} instance - Vue component instance
+   * @returns {object[]} - Array of child component instances
+   */
   function getChildComponents(instance) {
     const children = [];
     const visitedVnodes = new Set();
@@ -518,23 +535,21 @@
       data.data = serializeData(instance.data);
       data.template = instance.type.template || null;
 
-      if (instance.proxy) {
-        const computedKeys = Object.keys(instance.proxy).filter(key => {
-          try {
-            const descriptor = Object.getOwnPropertyDescriptor(instance.proxy, key);
-            return descriptor && typeof descriptor.get === 'function';
-          } catch (e) {
-            return false;
-          }
-        });
-        data.computed = computedKeys;
+      // Get computed from component definition (avoids Vue proxy enumeration warning)
+      if (instance.type.computed) {
+        data.computed = Object.keys(instance.type.computed);
+      }
 
-        const methodKeys = Object.keys(instance.type).filter(key =>
-          typeof instance.type[key] === 'function' &&
-          !key.startsWith('_') &&
-          key !== 'setup'
-        );
-        data.methods = methodKeys;
+      // Get methods from component definition
+      if (instance.type.methods) {
+        data.methods = Object.keys(instance.type.methods);
+      }
+
+      // For Composition API, check setupState for refs/computed
+      if (instance.setupState && !data.computed?.length) {
+        // Composition API computed properties are in setupState
+        // We already capture them via setupState serialization
+        data.computed = [];
       }
     }
 
