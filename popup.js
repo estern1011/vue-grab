@@ -1,6 +1,27 @@
 const toggleBtn = document.getElementById('toggleBtn');
-const saveBtn = document.getElementById('saveBtn');
+const ideSection = document.getElementById('ideSection');
+const ideSelect = document.getElementById('ideSelect');
+const openIdeBtn = document.getElementById('openIdeBtn');
 const statusDiv = document.getElementById('status');
+
+// IDE configurations with their URL schemes
+const IDE_CONFIG = {
+  cursor: {
+    name: 'Cursor',
+    scheme: 'cursor',
+    // Cursor uses cursor://file/path format
+    buildUrl: (filePath) => `cursor://file/${filePath || ''}`
+  },
+  windsurf: {
+    name: 'Windsurf',
+    scheme: 'windsurf',
+    // Windsurf uses windsurf://file/path format
+    buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
+  }
+};
+
+// Store the last component data for IDE opening
+let lastComponentFilePath = null;
 
 // Helper to safely send messages to content script with error handling
 function sendMessageToTab(action, callback) {
@@ -52,6 +73,15 @@ function showError(message) {
 sendMessageToTab('getState', (response) => {
   if (response) {
     updateUI(response.isActive, response.hasData);
+
+    // If we have data, get the file path for IDE opening
+    if (response.hasData) {
+      sendMessageToTab('getLastData', (dataResponse) => {
+        if (dataResponse && dataResponse.data) {
+          lastComponentFilePath = dataResponse.data.filePath;
+        }
+      });
+    }
   }
 });
 
@@ -70,63 +100,48 @@ toggleBtn.addEventListener('click', () => {
   });
 });
 
-saveBtn.addEventListener('click', () => {
-  sendMessageToTab('getLastData', (response) => {
-    if (response && response.data) {
-      downloadContextFile(response.data);
-    }
-  });
-});
+openIdeBtn.addEventListener('click', () => {
+  const selectedIde = ideSelect.value;
+  const config = IDE_CONFIG[selectedIde];
 
-// Listen for download requests from content script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'downloadFile') {
-    downloadContextFile({ content: request.content, filename: request.filename });
-  }
-});
-
-function downloadContextFile(data) {
-  // Format the data if it's a component object
-  let content = data.content;
-  if (!content && data.componentName) {
-    // This is a component data object, we need to format it
-    sendMessageToTab('formatAndDownload', (response) => {
-      if (response && response.success) {
-        statusDiv.textContent = '✓ Downloading...';
-        statusDiv.className = 'status active';
-      } else {
-        statusDiv.textContent = '✗ Download failed';
-        statusDiv.className = 'status inactive';
-      }
-    });
+  if (!config) {
+    statusDiv.textContent = '✗ Unknown IDE selected';
+    statusDiv.className = 'status error';
     return;
   }
 
-  // Generate filename with timestamp
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = data.filename || `vue-component-${timestamp}.md`;
+  // Get the latest data to ensure we have the file path
+  sendMessageToTab('getLastData', (response) => {
+    if (response && response.data) {
+      const filePath = response.data.filePath;
+      const url = config.buildUrl(filePath);
 
-  // Create download
-  const blob = new Blob([content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
+      try {
+        // Try to open the IDE with the file
+        window.open(url, '_blank');
+        statusDiv.textContent = `✓ Opening in ${config.name}...`;
+        statusDiv.className = 'status active';
 
-  chrome.downloads.download({
-    url: url,
-    filename: filename,
-    saveAs: true  // Let user choose location
-  }, (downloadId) => {
-    if (chrome.runtime.lastError) {
-      console.error('Download error:', chrome.runtime.lastError);
-      statusDiv.textContent = '✗ Download failed - check permissions';
-      statusDiv.className = 'status inactive';
+        // Close popup after a short delay
+        setTimeout(() => window.close(), 1500);
+      } catch (e) {
+        console.error('Failed to open IDE:', e);
+        statusDiv.textContent = `✗ Could not open ${config.name}. Is it installed?`;
+        statusDiv.className = 'status error';
+      }
     } else {
-      statusDiv.textContent = '✓ File saved!';
-      statusDiv.className = 'status active';
-      setTimeout(() => window.close(), 2000);
+      statusDiv.textContent = '✗ No component data available';
+      statusDiv.className = 'status error';
     }
-    URL.revokeObjectURL(url);
   });
-}
+});
+
+// Listen for download requests from content script (not used currently but kept for compatibility)
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'downloadFile') {
+    // Could add download functionality here if needed
+  }
+});
 
 function updateUI(isActive, hasData) {
   toggleBtn.disabled = false;
@@ -136,18 +151,20 @@ function updateUI(isActive, hasData) {
     toggleBtn.classList.add('active');
     statusDiv.textContent = '✓ Active - Click any element';
     statusDiv.className = 'status active';
-    saveBtn.style.display = 'none';
+    ideSection.classList.remove('visible');
   } else {
     toggleBtn.textContent = 'Start Grabbing';
     toggleBtn.classList.remove('active');
     statusDiv.textContent = 'Click the button to activate';
     statusDiv.className = 'status inactive';
 
-    // Show save button if we have data
+    // Show IDE section if we have data
     if (hasData) {
-      saveBtn.style.display = 'block';
+      ideSection.classList.add('visible');
+      statusDiv.textContent = '✓ Data copied! Open in IDE or paste anywhere.';
+      statusDiv.className = 'status active';
     } else {
-      saveBtn.style.display = 'none';
+      ideSection.classList.remove('visible');
     }
   }
 }
