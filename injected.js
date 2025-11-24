@@ -180,6 +180,8 @@
     let instance = null;
     let allCandidates = [];
 
+    console.debug('Vue Grab: Finding component for element:', element.tagName, element.className);
+
     // Strategy 1: Walk up DOM to collect ALL components we find
     let currentEl = element;
     let depth = 0;
@@ -191,18 +193,22 @@
       // Check for Vue 3 component on this element
       if (currentEl.__vueParentComponent) {
         foundInstance = currentEl.__vueParentComponent;
+        console.debug('Vue Grab: Found via __vueParentComponent at depth', depth, ':', getComponentName(foundInstance));
       }
       // Check for vnode with component
       else if (currentEl.__vnode?.component) {
         foundInstance = currentEl.__vnode.component;
+        console.debug('Vue Grab: Found via __vnode.component at depth', depth, ':', getComponentName(foundInstance));
       }
       // Check for Vue 2 component
       else if (currentEl.__vue__) {
         foundInstance = currentEl.__vue__;
+        console.debug('Vue Grab: Found via __vue__ at depth', depth, ':', getComponentName(foundInstance));
       }
       // Check fiber-like properties
       else if (currentEl._vnode?.component) {
         foundInstance = currentEl._vnode.component;
+        console.debug('Vue Grab: Found via _vnode.component at depth', depth, ':', getComponentName(foundInstance));
       }
 
       if (foundInstance && !allCandidates.includes(foundInstance)) {
@@ -213,15 +219,23 @@
       depth++;
     }
 
+    console.debug('Vue Grab: Found', allCandidates.length, 'candidate components:', allCandidates.map(c => getComponentName(c)));
+
     // The first candidate (closest to element) is our starting point
     if (allCandidates.length > 0) {
       instance = allCandidates[0];
+      console.debug('Vue Grab: Starting with closest:', getComponentName(instance));
 
       // But also check if any of the parent candidates have child components
       // that contain our target element and are deeper
       for (const candidate of allCandidates) {
+        console.debug('Vue Grab: Checking children of', getComponentName(candidate));
+        const children = getChildComponents(candidate);
+        console.debug('Vue Grab: Children found:', children.length, children.map(c => getComponentName(c)));
+
         const deeperInstance = findDeepestChildContaining(candidate, element, new Set());
         if (deeperInstance) {
+          console.debug('Vue Grab: Found deeper child:', getComponentName(deeperInstance));
           instance = deeperInstance;
           break; // Found the deepest, no need to check more parents
         }
@@ -230,14 +244,19 @@
 
     // Strategy 2: Use DevTools hook for top-down search if DOM walking failed
     if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
+      console.debug('Vue Grab: Trying DevTools hook approach');
       const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
       if (hook.apps && hook.apps.size > 0) {
         instance = findComponentViaDevtoolsHook(element, hook);
       }
     }
 
-    if (!instance) return null;
+    if (!instance) {
+      console.debug('Vue Grab: No component found');
+      return null;
+    }
 
+    console.debug('Vue Grab: Final result:', getComponentName(instance));
     return {
       name: getComponentName(instance),
       instance
@@ -254,10 +273,15 @@
     // Check all child components
     const children = getChildComponents(instance);
     for (const child of children) {
-      if (componentContainsElement(child, targetElement)) {
+      const childName = getComponentName(child);
+      const contains = componentContainsElement(child, targetElement);
+      console.debug('Vue Grab: Does', childName, 'contain target?', contains);
+
+      if (contains) {
         // This child contains the target, but check if any of ITS children are deeper
         const deeper = findDeepestChildContaining(child, targetElement, visited);
         deepest = deeper || child;
+        console.debug('Vue Grab: Deepest in this branch:', getComponentName(deepest));
         break; // We found the branch, no need to check siblings
       }
     }

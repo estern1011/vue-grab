@@ -6,6 +6,7 @@ let lastComponentData = null;
 let currentHierarchy = null;
 let currentHierarchyIndex = -1;
 let breadcrumbElement = null;
+let floatingLabel = null; // New: floating label element
 let selectedEditor = 'cursor'; // Default editor, will be loaded from storage
 
 // Load saved editor preference
@@ -110,9 +111,13 @@ window.addEventListener('message', (event) => {
     }
   } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
     // Response from hover detection
+    const componentName = event.data.info?.name || 'Anonymous';
+    console.debug('Vue Grab: Component detected:', componentName, event.data.info);
+
     if (event.data.info && hoveredElement) {
       hoveredElement.classList.add('vue-grab-highlight');
-      hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
+      // Use floating label instead of data attribute (avoids overflow clipping)
+      showFloatingLabel(hoveredElement, componentName);
 
       // Update hierarchy info
       currentHierarchy = event.data.info.hierarchy || [];
@@ -198,7 +203,6 @@ function deactivate() {
 
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
-    hoveredElement.removeAttribute('data-vue-component');
     hoveredElement.removeAttribute('data-vue-grab-id');
   }
 
@@ -208,6 +212,7 @@ function deactivate() {
 
   hideActiveIndicator();
   hideBreadcrumb();
+  hideFloatingLabel();
 }
 
 function handleMouseOver(e) {
@@ -231,10 +236,12 @@ function handleMouseOut(e) {
 
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
-    hoveredElement.removeAttribute('data-vue-component');
     hoveredElement.removeAttribute('data-vue-grab-id');
     hoveredElement = null;
   }
+
+  // Hide floating label
+  hideFloatingLabel();
 
   // Reset hierarchy when mouse leaves element
   currentHierarchy = null;
@@ -245,32 +252,48 @@ function handleMouseOut(e) {
 function handleClick(e) {
   if (!isActive) return;
 
+  console.debug('Vue Grab: Click detected', { target: e.target, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
+
   e.preventDefault();
   e.stopPropagation();
 
-  // ⌘+click or Ctrl+click → copy + open in editor
-  // Regular click → just copy
-  if (e.metaKey || e.ctrlKey) {
+  triggerExtraction(e.metaKey || e.ctrlKey, e.target);
+}
+
+// Shared extraction logic for click and Enter key
+function triggerExtraction(openInEditorMode, targetElement) {
+  console.debug('Vue Grab: Triggering extraction', { openInEditorMode, targetElement, hoveredElement });
+
+  // Set pending action
+  if (openInEditorMode) {
     pendingAction = 'editor';
   } else {
     pendingAction = 'copy';
   }
 
-  // Ensure we have the clicked element (in case mouseout fired)
-  const clickedElement = e.target;
-  if (!hoveredElement && clickedElement) {
-    hoveredElement = clickedElement;
+  // Ensure we have an element to extract from
+  if (!hoveredElement && targetElement) {
+    hoveredElement = targetElement;
+  }
+
+  if (!hoveredElement) {
+    console.debug('Vue Grab: No element to extract from');
+    showToast('No element selected. Hover over an element first.', 'error');
+    return;
   }
 
   // Always ensure the element has an ID for extraction
-  if (hoveredElement && !hoveredElement.getAttribute('data-vue-grab-id')) {
+  if (!hoveredElement.getAttribute('data-vue-grab-id')) {
     const elementId = 'vue-grab-' + Math.random().toString(36).substr(2, 9);
     hoveredElement.setAttribute('data-vue-grab-id', elementId);
   }
 
+  console.debug('Vue Grab: Element ID:', hoveredElement.getAttribute('data-vue-grab-id'));
+
   // Set a timeout to deactivate even if extraction fails
   const extractionTimeout = setTimeout(() => {
     if (isActive) {
+      console.debug('Vue Grab: Extraction timed out');
       showToast('Extraction timed out. Try again.', 'error');
       pendingAction = null;
       deactivate();
@@ -292,6 +315,15 @@ function handleKeyDown(e) {
     deactivate();
     isActive = false;
     showToast('Vue Grab deactivated', 'success');
+    return;
+  }
+
+  // Enter - extract and copy (Cmd+Enter for editor)
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.stopPropagation();
+    console.debug('Vue Grab: Enter key pressed', { metaKey: e.metaKey, ctrlKey: e.ctrlKey });
+    triggerExtraction(e.metaKey || e.ctrlKey, null);
     return;
   }
 
@@ -603,8 +635,8 @@ function showActiveIndicator() {
   activeIndicator.innerHTML = `
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
-      <span class="shortcut"><kbd>Click</kbd> Copy</span>
-      <span class="shortcut"><kbd>⌘+Click</kbd> Copy + Editor</span>
+      <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Copy</span>
+      <span class="shortcut"><kbd>⌘+Click</kbd>/<kbd>⌘+Enter</kbd> + Editor</span>
       <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
       <span class="shortcut"><kbd>Esc</kbd> Cancel</span>
     </div>
@@ -652,6 +684,52 @@ function hideBreadcrumb() {
   if (breadcrumbElement) {
     breadcrumbElement.remove();
     breadcrumbElement = null;
+  }
+}
+
+// Floating label for component name (avoids overflow:hidden clipping)
+function showFloatingLabel(element, componentName) {
+  hideFloatingLabel();
+
+  if (!element || !componentName) return;
+
+  floatingLabel = document.createElement('div');
+  floatingLabel.className = 'vue-grab-floating-label';
+  floatingLabel.textContent = componentName;
+  document.body.appendChild(floatingLabel);
+
+  positionFloatingLabel(element);
+}
+
+function positionFloatingLabel(element) {
+  if (!floatingLabel || !element) return;
+
+  const rect = element.getBoundingClientRect();
+  const labelRect = floatingLabel.getBoundingClientRect();
+
+  // Position above the element, or below if not enough space above
+  let top = rect.top + window.scrollY - labelRect.height - 4;
+  let left = rect.left + window.scrollX;
+
+  // If would go above viewport, position below instead
+  if (top < window.scrollY + 4) {
+    top = rect.bottom + window.scrollY + 4;
+  }
+
+  // Keep within horizontal viewport bounds
+  if (left + labelRect.width > window.innerWidth - 4) {
+    left = window.innerWidth - labelRect.width - 4;
+  }
+  if (left < 4) left = 4;
+
+  floatingLabel.style.top = `${top}px`;
+  floatingLabel.style.left = `${left}px`;
+}
+
+function hideFloatingLabel() {
+  if (floatingLabel) {
+    floatingLabel.remove();
+    floatingLabel = null;
   }
 }
 
