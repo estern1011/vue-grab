@@ -214,7 +214,7 @@ export interface MessageFromInjected {
  * Message from popup to content script
  */
 export interface PopupMessage {
-  action: 'toggle' | 'getState' | 'getLastData' | 'setEditor' | 'formatAndDownload';
+  action: 'toggle' | 'getState' | 'getLastData' | 'setEditor';
   editor?: string;
 }
 

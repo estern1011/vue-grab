@@ -6,7 +6,30 @@
  */
 
 import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
-import type { ComponentData, ComponentInfo, MessageFromInjected } from './types';
+import type { ComponentData, ComponentInfo } from './types';
+
+interface BridgeHandshake {
+  bridgeId: string;
+  requestEvent: string;
+  responseEvent: string;
+}
+
+type BridgeRequestMessage =
+  | { type: 'VUE_GRAB_GET_INFO'; elementId: string }
+  | { type: 'VUE_GRAB_EXTRACT'; elementId: string }
+  | { type: 'VUE_GRAB_EXTRACT_CURRENT' }
+  | { type: 'VUE_GRAB_NAVIGATE_PARENT' }
+  | { type: 'VUE_GRAB_NAVIGATE_CHILD' };
+
+type BridgeResponseMessage =
+  | { type: 'VUE_GRAB_COMPONENT_DATA'; data: ComponentData | null; error?: string | null }
+  | { type: 'VUE_GRAB_COMPONENT_INFO'; info: ComponentInfo | null }
+  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfo | null; error?: string | null };
+
+interface BridgeRuntime {
+  element: HTMLElement;
+  config: BridgeHandshake;
+}
 
 // Extend Window interface for our custom properties
 declare global {
@@ -14,6 +37,8 @@ declare global {
     _vueGrabExtractionTimeout?: number;
   }
 }
+
+const bridgeRuntime = initializeBridge();
 
 // State
 let isActive = false;
@@ -55,33 +80,24 @@ if (document.head || document.documentElement) {
 // Track pending action for keyboard shortcuts
 let pendingAction: 'copy' | 'editor' | null = null;
 
-// Global keyboard listener for activation shortcut (⌘C / Ctrl+C)
-document.addEventListener('keydown', handleGlobalKeyDown, true);
-
-function handleGlobalKeyDown(e: KeyboardEvent): void {
-  if (!isActive && (e.metaKey || e.ctrlKey) && e.key === 'c' && !e.shiftKey) {
-    const selection = window.getSelection();
-    if (selection && selection.toString().length > 0) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    isActive = true;
-    activate();
-  }
+if (bridgeRuntime) {
+  bridgeRuntime.element.addEventListener(bridgeRuntime.config.responseEvent, handleBridgeResponse as EventListener);
+} else {
+  console.error('Vue Grab: Bridge initialization failed. Extraction will not work.');
 }
 
-// Listen for messages from injected script
-window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) => {
-  if (event.source !== window) return;
+function handleBridgeResponse(event: Event): void {
+  const customEvent = event as CustomEvent<BridgeResponseMessage>;
+  const detail = customEvent.detail;
+  if (!detail) return;
 
-  if (event.data.type === 'VUE_GRAB_COMPONENT_DATA') {
+  if (detail.type === 'VUE_GRAB_COMPONENT_DATA') {
     if (window._vueGrabExtractionTimeout) {
       clearTimeout(window._vueGrabExtractionTimeout);
       window._vueGrabExtractionTimeout = undefined;
     }
 
-    const componentData = event.data.data;
+    const componentData = detail.data;
     if (componentData) {
       lastComponentData = componentData;
 
@@ -98,35 +114,90 @@ window.addEventListener('message', (event: MessageEvent<MessageFromInjected>) =>
       deactivate();
       isActive = false;
     } else {
-      showToast(event.data.error || 'No Vue component found', 'error');
+      showToast(detail.error || 'No Vue component found', 'error');
       pendingAction = null;
       deactivate();
       isActive = false;
     }
-  } else if (event.data.type === 'VUE_GRAB_COMPONENT_INFO') {
-    if (event.data.info && hoveredElement) {
-      const componentName = event.data.info.name || 'Anonymous';
+  } else if (detail.type === 'VUE_GRAB_COMPONENT_INFO') {
+    if (detail.info && hoveredElement) {
+      const componentName = detail.info.name || 'Anonymous';
       hoveredElement.classList.add('vue-grab-highlight');
       showFloatingLabel(hoveredElement, componentName);
 
-      currentHierarchy = event.data.info.hierarchy || [];
-      currentHierarchyIndex = event.data.info.currentIndex ?? -1;
+      currentHierarchy = detail.info.hierarchy || [];
+      currentHierarchyIndex = detail.info.currentIndex ?? -1;
       updateBreadcrumb();
     }
-  } else if (event.data.type === 'VUE_GRAB_NAVIGATION_RESULT') {
-    if (event.data.info) {
-      currentHierarchy = event.data.info.hierarchy || [];
-      currentHierarchyIndex = event.data.info.currentIndex ?? -1;
+  } else if (detail.type === 'VUE_GRAB_NAVIGATION_RESULT') {
+    if (detail.info) {
+      currentHierarchy = detail.info.hierarchy || [];
+      currentHierarchyIndex = detail.info.currentIndex ?? -1;
 
       if (hoveredElement) {
-        hoveredElement.setAttribute('data-vue-component', event.data.info.name || 'Anonymous');
+        hoveredElement.setAttribute('data-vue-component', detail.info.name || 'Anonymous');
       }
       updateBreadcrumb();
-    } else if (event.data.error) {
-      showToast(event.data.error, 'error');
+    } else if (detail.error) {
+      showToast(detail.error, 'error');
     }
   }
-});
+}
+
+function initializeBridge(): BridgeRuntime | null {
+  const host = document.documentElement || document.body;
+  if (!host) {
+    return null;
+  }
+
+  const suffix = generateRandomId();
+  const handshake: BridgeHandshake = {
+    bridgeId: `vue-grab-bridge-${suffix}`,
+    requestEvent: `vue-grab-request-${suffix}`,
+    responseEvent: `vue-grab-response-${suffix}`
+  };
+
+  const element = document.createElement('div');
+  element.id = handshake.bridgeId;
+  element.style.display = 'none';
+  element.setAttribute('data-vue-grab-bridge', 'true');
+  host.appendChild(element);
+
+  injectBridgeConfig(handshake);
+
+  return { element, config: handshake };
+}
+
+function injectBridgeConfig(config: BridgeHandshake): void {
+  const script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.textContent = `window.__VUE_GRAB_BRIDGE__ = ${JSON.stringify(config)};`;
+  (document.documentElement || document.head || document.body)?.appendChild(script);
+  script.remove();
+}
+
+function generateRandomId(): string {
+  if (window.crypto && window.crypto.getRandomValues) {
+    const array = new Uint32Array(2);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, (value) => value.toString(16)).join('');
+  }
+  return Math.random().toString(36).substring(2, 11);
+}
+
+function sendBridgeRequest(message: BridgeRequestMessage): void {
+  if (!bridgeRuntime) {
+    console.warn('Vue Grab: Cannot communicate with injected script.');
+    return;
+  }
+
+  const event = new CustomEvent(bridgeRuntime.config.requestEvent, {
+    detail: message,
+    bubbles: false,
+    composed: false
+  });
+  bridgeRuntime.element.dispatchEvent(event);
+}
 
 function openInEditor(componentData: ComponentData): void {
   const filePath = componentData?.filePath;
@@ -158,13 +229,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'setEditor') {
     selectedEditor = request.editor as string;
     sendResponse({ success: true });
-  } else if (request.action === 'formatAndDownload') {
-    if (lastComponentData) {
-      triggerDownload(lastComponentData);
-      sendResponse({ success: true });
-    } else {
-      sendResponse({ success: false, error: 'No component data available' });
-    }
   }
   return true;
 });
@@ -206,10 +270,10 @@ function handleMouseOver(e: MouseEvent): void {
   const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
 
-  window.postMessage({
+  sendBridgeRequest({
     type: 'VUE_GRAB_GET_INFO',
-    elementId: elementId
-  }, '*');
+    elementId
+  });
 }
 
 function handleMouseOut(e: MouseEvent): void {
@@ -286,21 +350,21 @@ function handleKeyDown(e: KeyboardEvent): void {
   if (e.altKey && e.key === 'ArrowUp') {
     e.preventDefault();
     e.stopPropagation();
-    window.postMessage({ type: 'VUE_GRAB_NAVIGATE_PARENT' }, '*');
+    sendBridgeRequest({ type: 'VUE_GRAB_NAVIGATE_PARENT' });
     return;
   }
 
   if (e.altKey && e.key === 'ArrowDown') {
     e.preventDefault();
     e.stopPropagation();
-    window.postMessage({ type: 'VUE_GRAB_NAVIGATE_CHILD' }, '*');
+    sendBridgeRequest({ type: 'VUE_GRAB_NAVIGATE_CHILD' });
     return;
   }
 }
 
 function extractCurrentComponent(): void {
   if (currentHierarchyIndex >= 0 && currentHierarchy && currentHierarchy.length > 0) {
-    window.postMessage({ type: 'VUE_GRAB_EXTRACT_CURRENT' }, '*');
+    sendBridgeRequest({ type: 'VUE_GRAB_EXTRACT_CURRENT' });
     return;
   }
 
@@ -310,10 +374,10 @@ function extractCurrentComponent(): void {
       elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
       hoveredElement.setAttribute('data-vue-grab-id', elementId);
     }
-    window.postMessage({
+    sendBridgeRequest({
       type: 'VUE_GRAB_EXTRACT',
-      elementId: elementId
-    }, '*');
+      elementId
+    });
     return;
   }
 
@@ -676,18 +740,4 @@ function hideFloatingLabel(): void {
     floatingLabel.remove();
     floatingLabel = null;
   }
-}
-
-function triggerDownload(componentData: ComponentData): void {
-  const formatted = formatForClaudeCCode(componentData);
-  const componentName = componentData.componentName || 'component';
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-
-  chrome.runtime.sendMessage({
-    action: 'downloadFile',
-    content: formatted,
-    filename: `${componentName}-${timestamp}.md`
-  });
-
-  showToast('Downloading component context...', 'success');
 }
