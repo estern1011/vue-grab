@@ -9,13 +9,11 @@ const IDE_CONFIG = {
   cursor: {
     name: 'Cursor',
     scheme: 'cursor',
-    // Cursor uses cursor://file/path format
     buildUrl: (filePath) => `cursor://file/${filePath || ''}`
   },
   windsurf: {
     name: 'Windsurf',
     scheme: 'windsurf',
-    // Windsurf uses windsurf://file/path format
     buildUrl: (filePath) => `windsurf://file/${filePath || ''}`
   }
 };
@@ -23,12 +21,30 @@ const IDE_CONFIG = {
 // Store the last component data for IDE opening
 let lastComponentFilePath = null;
 
+// Load saved editor preference
+chrome.storage.local.get(['selectedEditor'], (result) => {
+  if (result.selectedEditor) {
+    ideSelect.value = result.selectedEditor;
+  }
+});
+
+// Save editor preference when changed
+ideSelect.addEventListener('change', () => {
+  const selectedEditor = ideSelect.value;
+
+  // Save to storage
+  chrome.storage.local.set({ selectedEditor });
+
+  // Notify content script of the change
+  sendMessageToTab('setEditor', null, { editor: selectedEditor });
+});
+
 // Helper to safely send messages to content script with error handling
-function sendMessageToTab(action, callback) {
+function sendMessageToTab(action, callback, extraData = {}) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     // Validate we have a tab
     if (!tabs || !tabs[0] || !tabs[0].id) {
-      showError('No active tab found');
+      if (callback) showError('No active tab found');
       return;
     }
 
@@ -43,15 +59,15 @@ function sendMessageToTab(action, callback) {
       tab.url.startsWith('devtools://') ||
       tab.url === 'about:blank'
     )) {
-      showError('Cannot run on browser internal pages');
+      if (callback) showError('Cannot run on browser internal pages');
       return;
     }
 
-    chrome.tabs.sendMessage(tab.id, { action }, (response) => {
+    chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response) => {
       // Check for connection errors
       if (chrome.runtime.lastError) {
         console.error('Connection error:', chrome.runtime.lastError.message);
-        showError('Content script not loaded. Try refreshing the page.');
+        if (callback) showError('Content script not loaded. Try refreshing the page.');
         return;
       }
 

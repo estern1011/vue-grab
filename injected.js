@@ -1,6 +1,37 @@
-// This script runs in the page context and can access Vue internals
+/**
+ * Vue Grab - Injected Script
+ *
+ * This script runs in the page context (not the extension's isolated world)
+ * so it can access Vue's internal properties on DOM elements.
+ *
+ * Architecture:
+ * - content.js (content script) handles UI and user interaction
+ * - injected.js (this file) accesses Vue internals and extracts component data
+ * - Communication is via window.postMessage()
+ *
+ * Message Types (content.js → injected.js):
+ * - VUE_GRAB_GET_INFO: Get component info for a hovered element
+ * - VUE_GRAB_EXTRACT: Extract full component data for an element
+ * - VUE_GRAB_EXTRACT_CURRENT: Extract data for the currently navigated component
+ * - VUE_GRAB_NAVIGATE_PARENT: Navigate up the component hierarchy
+ * - VUE_GRAB_NAVIGATE_CHILD: Navigate down the component hierarchy
+ *
+ * Response Types (injected.js → content.js):
+ * - VUE_GRAB_COMPONENT_INFO: Component name and hierarchy for hover display
+ * - VUE_GRAB_COMPONENT_DATA: Full extracted component data
+ * - VUE_GRAB_NAVIGATION_RESULT: Updated hierarchy after navigation
+ *
+ * Vue Detection:
+ * - Vue 3: Uses __vueParentComponent on DOM elements
+ * - Vue 2: Uses __vue__ on DOM elements
+ * - Fallback: Uses __VUE_DEVTOOLS_GLOBAL_HOOK__ for top-down traversal
+ */
 (function() {
   'use strict';
+
+  // Track current component and its hierarchy for navigation
+  let currentComponentStack = [];
+  let currentStackIndex = -1;
 
   // Listen for messages from content script
   window.addEventListener('message', (event) => {
@@ -10,9 +41,21 @@
       const element = document.querySelector(`[data-vue-grab-id="${event.data.elementId}"]`);
       if (element) {
         const info = getVueComponentInfo(element);
+        // Build component hierarchy for this element
+        if (info) {
+          currentComponentStack = buildComponentHierarchy(info.instance);
+          currentStackIndex = currentComponentStack.length - 1;
+        } else {
+          currentComponentStack = [];
+          currentStackIndex = -1;
+        }
         window.postMessage({
           type: 'VUE_GRAB_COMPONENT_INFO',
-          info: info ? { name: info.name } : null
+          info: info ? {
+            name: info.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          } : null
         }, '*');
       }
     } else if (event.data.type === 'VUE_GRAB_EXTRACT') {
@@ -38,8 +81,82 @@
           error: error
         }, '*');
       }
+    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_PARENT') {
+      // Navigate to parent component in hierarchy
+      if (currentStackIndex > 0) {
+        currentStackIndex--;
+        const parentComponent = currentComponentStack[currentStackIndex];
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: {
+            name: parentComponent.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          }
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: null,
+          error: 'Already at root component'
+        }, '*');
+      }
+    } else if (event.data.type === 'VUE_GRAB_NAVIGATE_CHILD') {
+      // Navigate back to child component in hierarchy
+      if (currentStackIndex < currentComponentStack.length - 1) {
+        currentStackIndex++;
+        const childComponent = currentComponentStack[currentStackIndex];
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: {
+            name: childComponent.name,
+            hierarchy: currentComponentStack.map(c => c.name),
+            currentIndex: currentStackIndex
+          }
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_NAVIGATION_RESULT',
+          info: null,
+          error: 'Already at clicked element'
+        }, '*');
+      }
+    } else if (event.data.type === 'VUE_GRAB_EXTRACT_CURRENT') {
+      // Extract the currently navigated component (not necessarily the clicked element)
+      if (currentStackIndex >= 0 && currentComponentStack[currentStackIndex]) {
+        const componentInfo = currentComponentStack[currentStackIndex];
+        const data = extractFromInstance(componentInfo.instance);
+        window.postMessage({
+          type: 'VUE_GRAB_COMPONENT_DATA',
+          data: data,
+          error: data ? null : 'Could not extract component data'
+        }, '*');
+      } else {
+        window.postMessage({
+          type: 'VUE_GRAB_COMPONENT_DATA',
+          data: null,
+          error: 'No component selected'
+        }, '*');
+      }
     }
   });
+
+  // Build hierarchy from root to current component
+  function buildComponentHierarchy(instance) {
+    const hierarchy = [];
+    let current = instance;
+
+    while (current) {
+      hierarchy.unshift({
+        name: getComponentName(current),
+        instance: current
+      });
+      // Get parent component
+      current = current.parent || current.$parent;
+    }
+
+    return hierarchy;
+  }
 
   // Check if Vue is present on the page
   function detectVuePresence() {
@@ -86,54 +203,69 @@
     return result;
   }
 
+  /**
+   * Find the Vue component that owns a given DOM element.
+   *
+   * Strategy:
+   * 1. Walk up the DOM tree collecting all components found via __vueParentComponent
+   * 2. For each candidate, search its children to find the deepest component containing the element
+   * 3. Fall back to DevTools hook for top-down search if DOM walking fails
+   *
+   * @param {HTMLElement} element - The DOM element to find the component for
+   * @returns {{name: string, instance: object}|null} - Component info or null
+   */
   function getVueComponentInfo(element) {
     let instance = null;
+    let allCandidates = [];
 
-    // Method 1: Try Vue DevTools hook (most reliable when devtools is present)
-    if (window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
-      const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
-      if (hook.apps && hook.apps.size > 0) {
-        instance = findComponentViaDevtoolsHook(element, hook);
+    // Walk up DOM to collect all Vue component instances we encounter
+    let currentEl = element;
+    let depth = 0;
+    const maxDepth = 100;
+
+    while (currentEl && depth < maxDepth) {
+      let foundInstance = null;
+
+      // Vue 3: __vueParentComponent is set on component root elements
+      if (currentEl.__vueParentComponent) {
+        foundInstance = currentEl.__vueParentComponent;
+      }
+      // Vue 3 alternative: check vnode
+      else if (currentEl.__vnode?.component) {
+        foundInstance = currentEl.__vnode.component;
+      }
+      // Vue 2: __vue__ is set on component root elements
+      else if (currentEl.__vue__) {
+        foundInstance = currentEl.__vue__;
+      }
+
+      if (foundInstance && !allCandidates.includes(foundInstance)) {
+        allCandidates.push(foundInstance);
+      }
+
+      currentEl = currentEl.parentElement;
+      depth++;
+    }
+
+    // Start with the closest component (first found walking up)
+    if (allCandidates.length > 0) {
+      instance = allCandidates[0];
+
+      // Search each candidate's children for a deeper component containing the element
+      for (const candidate of allCandidates) {
+        const deeperInstance = findDeepestChildContaining(candidate, element, new Set());
+        if (deeperInstance) {
+          instance = deeperInstance;
+          break;
+        }
       }
     }
 
-    // Method 2: Try Vue 3 internal properties
-    if (!instance) {
-      instance = element.__vueParentComponent;
-    }
-
-    if (!instance && element.__vnode) {
-      instance = element.__vnode.component;
-    }
-
-    // Method 3: Try Vue 2 property
-    if (!instance) {
-      instance = element.__vue__;
-    }
-
-    // Method 4: Check for fiber-like properties (some Vue 3 builds)
-    if (!instance && element._vnode) {
-      instance = element._vnode.component;
-    }
-
-    // Method 5: Walk up the DOM tree
-    if (!instance) {
-      let parent = element.parentElement;
-      let depth = 0;
-      const maxDepth = 50;
-
-      while (parent && !instance && depth < maxDepth) {
-        instance = parent.__vueParentComponent ||
-                   parent.__vnode?.component ||
-                   parent.__vue__ ||
-                   parent._vnode?.component;
-
-        if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
-          instance = findComponentViaDevtoolsHook(parent, window.__VUE_DEVTOOLS_GLOBAL_HOOK__);
-        }
-
-        parent = parent.parentElement;
-        depth++;
+    // Fallback: use DevTools hook for top-down traversal
+    if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
+      const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
+      if (hook.apps && hook.apps.size > 0) {
+        instance = findComponentViaDevtoolsHook(element, hook);
       }
     }
 
@@ -143,6 +275,172 @@
       name: getComponentName(instance),
       instance
     };
+  }
+
+  /**
+   * Recursively find the deepest child component that contains the target element.
+   * @param {object} instance - Vue component instance to search from
+   * @param {HTMLElement} targetElement - The element we're looking for
+   * @param {Set} visited - Set of already-visited instances (prevents infinite loops)
+   * @returns {object|null} - Deepest component instance or null
+   */
+  function findDeepestChildContaining(instance, targetElement, visited = new Set()) {
+    if (!instance || visited.has(instance)) return null;
+    visited.add(instance);
+
+    const children = getChildComponents(instance);
+
+    for (const child of children) {
+      if (componentContainsElement(child, targetElement)) {
+        // Found a child that contains the element - recurse to find even deeper
+        const deeper = findDeepestChildContaining(child, targetElement, visited);
+        return deeper || child;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get all immediate child components of a Vue component instance.
+   * Traverses the vnode tree to find component children.
+   * @param {object} instance - Vue component instance
+   * @returns {object[]} - Array of child component instances
+   */
+  function getChildComponents(instance) {
+    const children = [];
+    const visitedVnodes = new Set();
+    const visitedInstances = new Set();
+
+    function collectFromVNode(vnode, depth = 0) {
+      if (!vnode || depth > 50) return;
+
+      // Handle arrays of vnodes
+      if (Array.isArray(vnode)) {
+        for (const v of vnode) {
+          collectFromVNode(v, depth);
+        }
+        return;
+      }
+
+      // Skip non-objects
+      if (typeof vnode !== 'object') return;
+
+      // Skip already visited
+      if (visitedVnodes.has(vnode)) return;
+      visitedVnodes.add(vnode);
+
+      // If this vnode has a component instance, add it
+      if (vnode.component && !visitedInstances.has(vnode.component)) {
+        visitedInstances.add(vnode.component);
+        children.push(vnode.component);
+        // Don't traverse into component's internal tree - we want immediate children only
+        return;
+      }
+
+      // Traverse children array
+      if (vnode.children) {
+        if (Array.isArray(vnode.children)) {
+          for (const child of vnode.children) {
+            collectFromVNode(child, depth + 1);
+          }
+        } else if (typeof vnode.children === 'object') {
+          // Could be a single vnode
+          collectFromVNode(vnode.children, depth + 1);
+        }
+      }
+
+      // Traverse dynamic children (optimized path in Vue 3)
+      if (vnode.dynamicChildren && Array.isArray(vnode.dynamicChildren)) {
+        for (const child of vnode.dynamicChildren) {
+          collectFromVNode(child, depth + 1);
+        }
+      }
+
+      // Check for component in shapeFlag (Vue 3 internal)
+      if (vnode.shapeFlag && vnode.component) {
+        if (!visitedInstances.has(vnode.component)) {
+          visitedInstances.add(vnode.component);
+          children.push(vnode.component);
+        }
+      }
+    }
+
+    // Vue 3: traverse subTree (the rendered vnode tree)
+    if (instance.subTree) {
+      collectFromVNode(instance.subTree);
+    }
+
+    // Also check the vnode itself
+    if (instance.vnode) {
+      collectFromVNode(instance.vnode);
+    }
+
+    // Vue 2: use $children directly
+    if (instance.$children && Array.isArray(instance.$children)) {
+      for (const child of instance.$children) {
+        if (!visitedInstances.has(child)) {
+          visitedInstances.add(child);
+          children.push(child);
+        }
+      }
+    }
+
+    return children;
+  }
+
+  // Check if a component's rendered DOM contains the target element
+  function componentContainsElement(instance, targetElement) {
+    // Get all possible root elements for this component
+    const elements = getComponentElements(instance);
+
+    for (const el of elements) {
+      if (el === targetElement) return true;
+      if (el && el.contains && el.contains(targetElement)) return true;
+    }
+
+    return false;
+  }
+
+  // Get all DOM elements that a component renders to
+  function getComponentElements(instance) {
+    const elements = [];
+
+    // Vue 3
+    if (instance.subTree) {
+      collectElements(instance.subTree, elements);
+    }
+
+    // Direct el reference
+    const directEl = instance.vnode?.el || instance.$el;
+    if (directEl && !elements.includes(directEl)) {
+      elements.push(directEl);
+    }
+
+    return elements;
+  }
+
+  // Collect DOM elements from a vnode tree
+  function collectElements(vnode, elements) {
+    if (!vnode) return;
+
+    // If vnode has an element, add it
+    if (vnode.el && vnode.el.nodeType === 1) {
+      if (!elements.includes(vnode.el)) {
+        elements.push(vnode.el);
+      }
+    }
+
+    // For fragments (type is Symbol), collect from children
+    if (typeof vnode.type === 'symbol' || vnode.type === null) {
+      if (Array.isArray(vnode.children)) {
+        for (const child of vnode.children) {
+          if (child && typeof child === 'object') {
+            collectElements(child, elements);
+          }
+        }
+      }
+    }
   }
 
   function findComponentViaDevtoolsHook(element, hook) {
@@ -164,8 +462,11 @@
           }
 
           if (rootInstance) {
-            const found = findComponentOwningElement(rootInstance, element);
-            if (found) return found;
+            // Check if root contains element, then find deepest child
+            if (componentContainsElement(rootInstance, element)) {
+              const deepest = findDeepestChildContaining(rootInstance, element);
+              return deepest || rootInstance;
+            }
           }
         }
       }
@@ -185,73 +486,29 @@
     return null;
   }
 
-  function findComponentOwningElement(instance, targetElement, visited = new Set()) {
-    if (!instance || visited.has(instance)) return null;
-    visited.add(instance);
-
-    const el = instance.vnode?.el || instance.subTree?.el || instance.$el;
-
-    if (el && (el === targetElement || (el.contains && el.contains(targetElement)))) {
-      const childComponent = findInChildren(instance, targetElement, visited);
-      if (childComponent) return childComponent;
-      return instance;
-    }
-
-    return null;
-  }
-
-  function findInChildren(instance, targetElement, visited) {
-    if (instance.subTree) {
-      const found = searchVNodeTree(instance.subTree, targetElement, visited);
-      if (found) return found;
-    }
-
-    if (instance.$children) {
-      for (const child of instance.$children) {
-        const found = findComponentOwningElement(child, targetElement, visited);
-        if (found) return found;
-      }
-    }
-
-    return null;
-  }
-
-  function searchVNodeTree(vnode, targetElement, visited) {
-    if (!vnode) return null;
-
-    if (vnode.component) {
-      const found = findComponentOwningElement(vnode.component, targetElement, visited);
-      if (found) return found;
-    }
-
-    if (vnode.children) {
-      const children = Array.isArray(vnode.children) ? vnode.children : [];
-      for (const child of children) {
-        if (child && typeof child === 'object') {
-          const found = searchVNodeTree(child, targetElement, visited);
-          if (found) return found;
-        }
-      }
-    }
-
-    if (vnode.dynamicChildren) {
-      for (const child of vnode.dynamicChildren) {
-        const found = searchVNodeTree(child, targetElement, visited);
-        if (found) return found;
-      }
-    }
-
-    return null;
-  }
-
   function extractVueComponent(element) {
     const info = getVueComponentInfo(element);
     if (!info) return null;
 
     const instance = info.instance;
 
+    const data = extractFromInstance(instance);
+
+    // Add element info
+    data.element = {
+      tagName: element.tagName.toLowerCase(),
+      id: element.id || null,
+      classes: Array.from(element.classList).filter(c => !c.startsWith('vue-grab')),
+      attributes: getElementAttributes(element)
+    };
+
+    return data;
+  }
+
+  // Extract component data from an instance (used for both direct extraction and navigation)
+  function extractFromInstance(instance) {
     const data = {
-      componentName: info.name,
+      componentName: getComponentName(instance),
       filePath: null,
       props: null,
       data: null,
@@ -262,12 +519,12 @@
       piniaStores: null,
       vuexStore: null,
       tanstackQueries: null,
-      element: {
-        tagName: element.tagName.toLowerCase(),
-        id: element.id || null,
-        classes: Array.from(element.classList).filter(c => !c.startsWith('vue-grab')),
-        attributes: getElementAttributes(element)
-      }
+      routerState: null,
+      providedValues: null,
+      injectedValues: null,
+      emittedEvents: null,
+      slots: null,
+      element: null
     };
 
     // Vue 3
@@ -278,23 +535,21 @@
       data.data = serializeData(instance.data);
       data.template = instance.type.template || null;
 
-      if (instance.proxy) {
-        const computedKeys = Object.keys(instance.proxy).filter(key => {
-          try {
-            const descriptor = Object.getOwnPropertyDescriptor(instance.proxy, key);
-            return descriptor && typeof descriptor.get === 'function';
-          } catch (e) {
-            return false;
-          }
-        });
-        data.computed = computedKeys;
+      // Get computed from component definition (avoids Vue proxy enumeration warning)
+      if (instance.type.computed) {
+        data.computed = Object.keys(instance.type.computed);
+      }
 
-        const methodKeys = Object.keys(instance.type).filter(key =>
-          typeof instance.type[key] === 'function' &&
-          !key.startsWith('_') &&
-          key !== 'setup'
-        );
-        data.methods = methodKeys;
+      // Get methods from component definition
+      if (instance.type.methods) {
+        data.methods = Object.keys(instance.type.methods);
+      }
+
+      // For Composition API, check setupState for refs/computed
+      if (instance.setupState && !data.computed?.length) {
+        // Composition API computed properties are in setupState
+        // We already capture them via setupState serialization
+        data.computed = [];
       }
     }
 
@@ -313,7 +568,310 @@
     data.vuexStore = extractVuexStore(instance);
     data.tanstackQueries = extractTanStackQueries(instance);
 
+    // Extract new features
+    data.routerState = extractRouterState(instance);
+    data.providedValues = extractProvidedValues(instance);
+    data.injectedValues = extractInjectedValues(instance);
+    data.emittedEvents = extractEmittedEvents(instance);
+    data.slots = extractSlots(instance);
+
     return data;
+  }
+
+  // Extract Vue Router state
+  function extractRouterState(instance) {
+    try {
+      let route = null;
+      let router = null;
+
+      // Vue 3 - Composition API
+      if (instance.proxy) {
+        route = instance.proxy.$route;
+        router = instance.proxy.$router;
+      }
+
+      // Vue 3 - App context
+      if (!route && instance.appContext?.config?.globalProperties) {
+        route = instance.appContext.config.globalProperties.$route;
+        router = instance.appContext.config.globalProperties.$router;
+      }
+
+      // Vue 2
+      if (!route && instance.$route) {
+        route = instance.$route;
+        router = instance.$router;
+      }
+
+      // Check setupState for useRoute/useRouter
+      if (!route && instance.setupState) {
+        for (const key of Object.keys(instance.setupState)) {
+          const value = instance.setupState[key];
+          if (value && value.path !== undefined && value.params !== undefined) {
+            route = value;
+            break;
+          }
+        }
+      }
+
+      if (!route) return null;
+
+      return {
+        path: route.path,
+        name: route.name || null,
+        fullPath: route.fullPath,
+        params: serializeData(route.params),
+        query: serializeData(route.query),
+        hash: route.hash || null,
+        meta: serializeData(route.meta),
+        matched: route.matched?.map(m => ({
+          path: m.path,
+          name: m.name,
+          components: Object.keys(m.components || {})
+        })) || [],
+        redirectedFrom: route.redirectedFrom?.fullPath || null
+      };
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting router state:', e);
+      return null;
+    }
+  }
+
+  // Extract values provided by this component
+  function extractProvidedValues(instance) {
+    try {
+      let provided = null;
+
+      // Vue 3
+      if (instance.provides) {
+        // Get only values provided by THIS component, not inherited
+        const parentProvides = instance.parent?.provides || {};
+        provided = {};
+
+        for (const key of Object.keys(instance.provides)) {
+          // Only include if it's different from parent's provides (meaning this component provided it)
+          if (instance.provides[key] !== parentProvides[key]) {
+            provided[key] = serializeData(instance.provides[key]);
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance._provided) {
+        provided = serializeData(instance._provided);
+      }
+
+      return provided && Object.keys(provided).length > 0 ? provided : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting provided values:', e);
+      return null;
+    }
+  }
+
+  // Extract values injected into this component
+  function extractInjectedValues(instance) {
+    try {
+      const injected = {};
+
+      // Vue 3 - Check inject option
+      if (instance.type?.inject) {
+        const injectOptions = instance.type.inject;
+        const injectKeys = Array.isArray(injectOptions)
+          ? injectOptions
+          : Object.keys(injectOptions);
+
+        for (const key of injectKeys) {
+          if (instance.proxy && key in instance.proxy) {
+            injected[key] = serializeData(instance.proxy[key]);
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance.$options?.inject) {
+        const injectOptions = instance.$options.inject;
+        const injectKeys = Array.isArray(injectOptions)
+          ? injectOptions
+          : Object.keys(injectOptions);
+
+        for (const key of injectKeys) {
+          if (key in instance) {
+            injected[key] = serializeData(instance[key]);
+          }
+        }
+      }
+
+      return Object.keys(injected).length > 0 ? injected : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting injected values:', e);
+      return null;
+    }
+  }
+
+  // Extract emitted events this component can emit
+  function extractEmittedEvents(instance) {
+    try {
+      const events = [];
+
+      // Vue 3 - emits option
+      if (instance.type?.emits) {
+        const emits = instance.type.emits;
+        if (Array.isArray(emits)) {
+          events.push(...emits);
+        } else if (typeof emits === 'object') {
+          events.push(...Object.keys(emits));
+        }
+      }
+
+      // Vue 3 - Check emitsOptions on instance
+      if (instance.emitsOptions) {
+        const emits = instance.emitsOptions;
+        if (typeof emits === 'object') {
+          events.push(...Object.keys(emits).filter(e => !events.includes(e)));
+        }
+      }
+
+      // Vue 2
+      if (instance.$options?.emits) {
+        const emits = instance.$options.emits;
+        if (Array.isArray(emits)) {
+          events.push(...emits.filter(e => !events.includes(e)));
+        } else if (typeof emits === 'object') {
+          events.push(...Object.keys(emits).filter(e => !events.includes(e)));
+        }
+      }
+
+      // Check for $emit calls in component source (heuristic)
+      const componentCode = getComponentSourceCode(instance);
+      if (componentCode) {
+        const emitPattern = /\$emit\(['"]([^'"]+)['"]/g;
+        const emit2Pattern = /emit\(['"]([^'"]+)['"]/g;
+        let match;
+
+        while ((match = emitPattern.exec(componentCode)) !== null) {
+          if (!events.includes(match[1])) {
+            events.push(match[1]);
+          }
+        }
+
+        while ((match = emit2Pattern.exec(componentCode)) !== null) {
+          if (!events.includes(match[1])) {
+            events.push(match[1]);
+          }
+        }
+      }
+
+      return events.length > 0 ? events : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting emitted events:', e);
+      return null;
+    }
+  }
+
+  // Extract slot content
+  function extractSlots(instance) {
+    try {
+      const slots = {};
+
+      // Vue 3
+      if (instance.slots) {
+        for (const slotName of Object.keys(instance.slots)) {
+          const slotFn = instance.slots[slotName];
+          if (typeof slotFn === 'function') {
+            try {
+              const vnodes = slotFn();
+              slots[slotName] = serializeVNodes(vnodes);
+            } catch (e) {
+              slots[slotName] = '[Slot function - requires props]';
+            }
+          }
+        }
+      }
+
+      // Vue 2
+      if (instance.$slots) {
+        for (const slotName of Object.keys(instance.$slots)) {
+          const vnodes = instance.$slots[slotName];
+          slots[slotName] = serializeVNodes(vnodes);
+        }
+      }
+
+      // Vue 2 scoped slots
+      if (instance.$scopedSlots) {
+        for (const slotName of Object.keys(instance.$scopedSlots)) {
+          if (!slots[slotName]) {
+            slots[slotName] = '[Scoped slot]';
+          }
+        }
+      }
+
+      return Object.keys(slots).length > 0 ? slots : null;
+    } catch (e) {
+      console.debug('Vue Grab: Error extracting slots:', e);
+      return null;
+    }
+  }
+
+  // Serialize VNodes to readable format
+  function serializeVNodes(vnodes) {
+    if (!vnodes) return null;
+
+    const nodes = Array.isArray(vnodes) ? vnodes : [vnodes];
+    const result = [];
+
+    for (const vnode of nodes) {
+      if (!vnode) continue;
+
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        result.push({ type: 'text', content: String(vnode) });
+        continue;
+      }
+
+      // Handle Vue 3 vnodes
+      if (vnode.type) {
+        const nodeInfo = {
+          type: typeof vnode.type === 'string'
+            ? vnode.type
+            : vnode.type?.name || vnode.type?.__name || 'Component'
+        };
+
+        if (vnode.props && Object.keys(vnode.props).length > 0) {
+          nodeInfo.props = serializeData(vnode.props);
+        }
+
+        if (vnode.children) {
+          if (typeof vnode.children === 'string') {
+            nodeInfo.content = vnode.children;
+          } else if (Array.isArray(vnode.children)) {
+            nodeInfo.children = serializeVNodes(vnode.children);
+          }
+        }
+
+        result.push(nodeInfo);
+      }
+
+      // Handle Vue 2 vnodes
+      if (vnode.tag) {
+        const nodeInfo = {
+          type: vnode.componentOptions?.tag || vnode.tag
+        };
+
+        if (vnode.data?.attrs) {
+          nodeInfo.props = serializeData(vnode.data.attrs);
+        }
+
+        if (vnode.children) {
+          nodeInfo.children = serializeVNodes(vnode.children);
+        }
+
+        if (vnode.text) {
+          nodeInfo.content = vnode.text;
+        }
+
+        result.push(nodeInfo);
+      }
+    }
+
+    return result.length > 0 ? result : null;
   }
 
   function getComponentName(instance) {
