@@ -1,0 +1,32 @@
+{
+  "name": "vue-grab",
+  "version": "3.0.0",
+  "description": "Browser extension to extract Vue component context for AI coding assistants",
+  "scripts": {
+    "build": "tsc && npm run copy-assets",
+    "watch": "tsc --watch",
+    "copy-assets": "cp src/content.css dist/ && cp -r icons dist/ && cp manifest.json dist/ && cp popup.html dist/",
+    "clean": "rm -rf dist/*",
+    "rebuild": "npm run clean && npm run build",
+    "dev": "npm run build && npm run watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.4.5"
+  },
+  "keywords": [
+    "vue",
+    "browser-extension",
+    "developer-tools",
+    "ai-assistant",
+    "claude-code",
+    "cursor",
+    "windsurf"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/estern1011/vue-grab"
+  }
+}
