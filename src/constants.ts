@@ -9,7 +9,7 @@ import type { IDEConfigMap, VueGrabConfig, MessageTypes } from './types';
 
 // IDE configurations for direct file opening
 // Each IDE uses a custom URL protocol to open files
-export const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
+const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
   cursor: {
     name: 'Cursor',
     scheme: 'cursor',
@@ -23,7 +23,7 @@ export const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
 };
 
 // Configuration constants
-export const VUE_GRAB_CONFIG: VueGrabConfig = {
+const VUE_GRAB_CONFIG: VueGrabConfig = {
   // Maximum DOM elements to scan when detecting Vue presence
   MAX_VUE_DETECTION_ELEMENTS: 100,
 
@@ -47,7 +47,7 @@ export const VUE_GRAB_CONFIG: VueGrabConfig = {
 };
 
 // Message types for communication between content.js and injected.js
-export const VUE_GRAB_MESSAGE_TYPES: MessageTypes = {
+const VUE_GRAB_MESSAGE_TYPES: MessageTypes = {
   // content.js -> injected.js
   GET_INFO: 'VUE_GRAB_GET_INFO',
   EXTRACT: 'VUE_GRAB_EXTRACT',

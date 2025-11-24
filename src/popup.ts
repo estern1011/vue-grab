@@ -1,5 +1,7 @@
-import { VUE_GRAB_IDE_CONFIG } from './constants';
 import type { ComponentData, ContentScriptResponse } from './types';
+
+// Access constants from window object (loaded from constants.js)
+const VUE_GRAB_IDE_CONFIG = window.VUE_GRAB_IDE_CONFIG;
 
 const toggleBtn = document.getElementById('toggleBtn') as HTMLButtonElement;
 const ideSection = document.getElementById('ideSection') as HTMLDivElement;

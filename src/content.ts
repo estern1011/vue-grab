@@ -5,8 +5,11 @@
  * It handles all UI elements and user interaction.
  */
 
-import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
 import type { ComponentData, ComponentInfo, MessageFromInjected } from './types';
+
+// Access constants from window object (loaded from constants.js)
+const VUE_GRAB_IDE_CONFIG = window.VUE_GRAB_IDE_CONFIG;
+const VUE_GRAB_CONFIG = window.VUE_GRAB_CONFIG;
 
 // Extend Window interface for our custom properties
 declare global {
