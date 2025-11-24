@@ -57,7 +57,6 @@ interface Window {
   Vue?: any;
   pinia?: any;
   __VUE_QUERY_CLIENT__?: any;
-  __VUE_GRAB_BRIDGE__?: BridgeHandshake | null;
 }
 
 interface HTMLElement {
@@ -79,19 +78,26 @@ interface HTMLElement {
   const MAX_SERIALIZATION_DEPTH = 5;
   const MAX_VNODE_DEPTH = 50;
 
-  const handshake = window.__VUE_GRAB_BRIDGE__;
-  const bridgeElement = handshake ? document.getElementById(handshake.bridgeId) : null;
+  const bridgeElement = document.querySelector('[data-vue-grab-bridge="true"]') as HTMLElement | null;
 
-  if (!handshake || !bridgeElement) {
+  if (!bridgeElement) {
     console.error('Vue Grab: Unable to establish communication bridge.');
     return;
   }
 
-  try {
-    delete window.__VUE_GRAB_BRIDGE__;
-  } catch (error) {
-    // Ignore if deletion fails
+  const requestEvent = bridgeElement.getAttribute('data-request-event');
+  const responseEvent = bridgeElement.getAttribute('data-response-event');
+
+  if (!bridgeElement.id || !requestEvent || !responseEvent) {
+    console.error('Vue Grab: Bridge metadata missing. Cannot communicate with content script.');
+    return;
   }
+
+  const handshake = {
+    bridgeId: bridgeElement.id,
+    requestEvent,
+    responseEvent
+  };
 
   bridgeElement.addEventListener(handshake.requestEvent, (event) => {
     const detail = (event as CustomEvent<BridgeRequestMessage>).detail;

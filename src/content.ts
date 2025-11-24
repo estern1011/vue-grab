@@ -161,19 +161,11 @@ function initializeBridge(): BridgeRuntime | null {
   element.id = handshake.bridgeId;
   element.style.display = 'none';
   element.setAttribute('data-vue-grab-bridge', 'true');
+  element.setAttribute('data-request-event', handshake.requestEvent);
+  element.setAttribute('data-response-event', handshake.responseEvent);
   host.appendChild(element);
 
-  injectBridgeConfig(handshake);
-
   return { element, config: handshake };
-}
-
-function injectBridgeConfig(config: BridgeHandshake): void {
-  const script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.textContent = `window.__VUE_GRAB_BRIDGE__ = ${JSON.stringify(config)};`;
-  (document.documentElement || document.head || document.body)?.appendChild(script);
-  script.remove();
 }
 
 function generateRandomId(): string {
