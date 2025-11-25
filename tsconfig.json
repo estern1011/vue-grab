@@ -22,14 +22,13 @@
     "forceConsistentCasingInFileNames": true,
 
     /* Type Checking */
-    "strict": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitReturns": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": false,
-    "noImplicitOverride": false,
-    "noImplicitAny": false,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
 
     /* Completeness */
     "skipLibCheck": true,

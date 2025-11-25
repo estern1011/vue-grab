@@ -53,6 +53,12 @@ function sendMessageToTab(
       return;
     }
 
+    // Ensure tab ID exists
+    if (typeof tab.id !== 'number') {
+      if (callback) showError('Invalid tab ID');
+      return;
+    }
+
     chrome.tabs.sendMessage(tab.id, { action, ...extraData }, (response: ContentScriptResponse) => {
       // Check for connection errors
       if (chrome.runtime.lastError) {

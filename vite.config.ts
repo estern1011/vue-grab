@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [
     webExtension({
       manifest: './manifest.json',
-      additionalInputs: ['src/injected.ts'],
+      additionalInputs: ['src/injected/index.ts'],
     }),
   ],
   build: {
