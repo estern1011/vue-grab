@@ -51,6 +51,10 @@ let breadcrumbElement: HTMLElement | null = null;
 let floatingLabel: HTMLElement | null = null;
 let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
+// Throttling state for mouseover events
+let mouseoverThrottleTimer: number | null = null;
+const MOUSEOVER_THROTTLE_MS = 100;
+
 // Load saved editor preference
 if (chrome.storage && chrome.storage.local) {
   chrome.storage.local.get(['selectedEditor'], (result) => {
@@ -241,6 +245,12 @@ function deactivate(): void {
   document.removeEventListener('click', handleClick, true);
   document.removeEventListener('keydown', handleKeyDown);
 
+  // Clear throttle timer
+  if (mouseoverThrottleTimer !== null) {
+    clearTimeout(mouseoverThrottleTimer);
+    mouseoverThrottleTimer = null;
+  }
+
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
     hoveredElement.removeAttribute('data-vue-grab-id');
@@ -257,7 +267,13 @@ function deactivate(): void {
 function handleMouseOver(e: MouseEvent): void {
   if (!isActive) return;
 
-  hoveredElement = e.target as HTMLElement;
+  // Throttle mouseover events to prevent performance issues
+  if (mouseoverThrottleTimer !== null) {
+    return; // Skip this event, still throttling
+  }
+
+  const targetElement = e.target as HTMLElement;
+  hoveredElement = targetElement;
 
   const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
@@ -266,6 +282,11 @@ function handleMouseOver(e: MouseEvent): void {
     type: 'VUE_GRAB_GET_INFO',
     elementId
   });
+
+  // Set throttle timer
+  mouseoverThrottleTimer = window.setTimeout(() => {
+    mouseoverThrottleTimer = null;
+  }, MOUSEOVER_THROTTLE_MS);
 }
 
 function handleMouseOut(_e: MouseEvent): void {
