@@ -1,3 +1,9 @@
+/* Ensure all elements are interactive during grab mode */
+body.vue-grab-active * {
+  pointer-events: auto !important;
+  user-select: none !important;
+}
+
 /* Overlay highlight for hovered elements */
 .vue-grab-highlight {
   outline: 2px solid #42b883 !important;

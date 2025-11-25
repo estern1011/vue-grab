@@ -230,9 +230,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 });
 
 function activate(): void {
-  document.addEventListener('mouseover', handleMouseOver);
-  document.addEventListener('mouseout', handleMouseOut);
+  // Add body class to enable CSS overrides
+  document.body.classList.add('vue-grab-active');
+
+  // Use capture phase for all events to intercept before page handlers
+  document.addEventListener('mouseover', handleMouseOver, true);
+  document.addEventListener('mouseout', handleMouseOut, true);
   document.addEventListener('click', handleClick, true);
+  document.addEventListener('mousedown', handleMouseDown, true);
   document.addEventListener('keydown', handleKeyDown);
 
   showActiveIndicator();
@@ -240,9 +245,13 @@ function activate(): void {
 }
 
 function deactivate(): void {
-  document.removeEventListener('mouseover', handleMouseOver);
-  document.removeEventListener('mouseout', handleMouseOut);
+  // Remove body class
+  document.body.classList.remove('vue-grab-active');
+
+  document.removeEventListener('mouseover', handleMouseOver, true);
+  document.removeEventListener('mouseout', handleMouseOut, true);
   document.removeEventListener('click', handleClick, true);
+  document.removeEventListener('mousedown', handleMouseDown, true);
   document.removeEventListener('keydown', handleKeyDown);
 
   // Clear throttle timer
@@ -302,6 +311,15 @@ function handleMouseOut(_e: MouseEvent): void {
   currentHierarchy = null;
   currentHierarchyIndex = -1;
   hideBreadcrumb();
+}
+
+function handleMouseDown(e: MouseEvent): void {
+  if (!isActive) return;
+
+  // Prevent default mousedown behavior (especially on buttons, links, form elements)
+  // This ensures our click handler fires and no default actions occur
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 function handleClick(e: MouseEvent): void {
