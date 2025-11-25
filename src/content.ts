@@ -67,7 +67,7 @@ if (chrome.storage && chrome.storage.local) {
 // Inject script into page context to access Vue internals
 function injectPageScript(): void {
   const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('src/injected.js');
+  script.src = chrome.runtime.getURL('src/injected/index.js');
   script.onload = function() {
     (this as any).remove();
   };
