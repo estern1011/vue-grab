@@ -1,6 +1,7 @@
 # Vue Grab for Claude Code 🎯
 
-A browser extension that lets you click any Vue component on a webpage and extract its full context (props, state, methods, template) to share with Claude Code.
+A browser extension that lets you click any Vue component on a webpage and extract its full context (props, state, methods, template) to share with AI code assistants.
+Inspired by react-grab! https://github.com/aidenybai/react-grab
 
 ## Features
 
