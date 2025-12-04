@@ -6,7 +6,7 @@
  */
 
 import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
-import type { ComponentData, ComponentInfo } from './types';
+import type { ComponentData, ComponentInfo, ScratchpadItem } from './types';
 
 interface BridgeHandshake {
   bridgeId: string;
@@ -51,6 +51,13 @@ let breadcrumbElement: HTMLElement | null = null;
 let floatingLabel: HTMLElement | null = null;
 let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
+// Scratchpad state
+let scratchpad: ScratchpadItem[] = [];
+let scratchpadPanel: HTMLElement | null = null;
+let inlineInput: HTMLElement | null = null;
+let pendingElementForScratchpad: HTMLElement | null = null;
+let clickPosition: { x: number; y: number } | null = null;
+
 // Throttling state for mouseover events
 let mouseoverThrottleTimer: number | null = null;
 const MOUSEOVER_THROTTLE_MS = 100;
@@ -82,7 +89,8 @@ if (document.head || document.documentElement) {
 }
 
 // Track pending action for keyboard shortcuts
-let pendingAction: 'copy' | 'editor' | null = null;
+let pendingAction: 'copy' | 'editor' | 'scratchpad' | null = null;
+let pendingScratchpadNote: string = '';
 
 if (bridgeRuntime) {
   bridgeRuntime.element.addEventListener(bridgeRuntime.config.responseEvent, handleBridgeResponse as EventListener);
@@ -105,18 +113,34 @@ function handleBridgeResponse(event: Event): void {
     if (componentData) {
       lastComponentData = componentData;
 
-      if (pendingAction === 'editor') {
+      if (pendingAction === 'scratchpad') {
+        // Add to scratchpad with the pending note
+        const item: ScratchpadItem = {
+          id: 'scratchpad-' + Math.random().toString(36).substring(2, 11),
+          note: pendingScratchpadNote,
+          componentData,
+          timestamp: Date.now()
+        };
+        scratchpad.push(item);
+        pendingScratchpadNote = '';
+        pendingAction = null;
+        updateScratchpadPanel();
+        showToast(`✓ Added "${componentData.componentName}" to scratchpad`, 'success');
+        // Don't deactivate - let user continue adding more
+      } else if (pendingAction === 'editor') {
         copyToClipboard(componentData);
         openInEditor(componentData);
         showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor]?.name}...`, 'success');
+        pendingAction = null;
+        deactivate();
+        isActive = false;
       } else {
         copyToClipboard(componentData);
         showToast('✓ Component data copied to clipboard!', 'success');
+        pendingAction = null;
+        deactivate();
+        isActive = false;
       }
-
-      pendingAction = null;
-      deactivate();
-      isActive = false;
     } else {
       showToast(detail.error || 'No Vue component found', 'error');
       pendingAction = null;
@@ -236,7 +260,7 @@ function activate(): void {
   document.addEventListener('keydown', handleKeyDown);
 
   showActiveIndicator();
-  showToast('Vue Grab activated! Click any element to extract its component.', 'success');
+  showToast('Vue Grab activated! Click elements to add to scratchpad.', 'success');
 }
 
 function deactivate(): void {
@@ -262,6 +286,13 @@ function deactivate(): void {
   hideActiveIndicator();
   hideBreadcrumb();
   hideFloatingLabel();
+  hideInlineInput();
+  hideScratchpadPanel();
+
+  // Clear scratchpad state
+  scratchpad = [];
+  pendingElementForScratchpad = null;
+  clickPosition = null;
 }
 
 function handleMouseOver(e: MouseEvent): void {
@@ -307,10 +338,25 @@ function handleMouseOut(_e: MouseEvent): void {
 function handleClick(e: MouseEvent): void {
   if (!isActive) return;
 
+  // If clicking on the inline input or scratchpad panel, don't interfere
+  const target = e.target as HTMLElement;
+  if (target.closest('.vue-grab-inline-input') || target.closest('.vue-grab-scratchpad-panel')) {
+    return;
+  }
+
   e.preventDefault();
   e.stopPropagation();
 
-  triggerExtraction(e.metaKey || e.ctrlKey, e.target as HTMLElement);
+  // If Ctrl/Cmd held, use old behavior (immediate extraction)
+  if (e.metaKey || e.ctrlKey) {
+    triggerExtraction(true, target);
+    return;
+  }
+
+  // Show inline input for scratchpad note
+  clickPosition = { x: e.clientX, y: e.clientY };
+  pendingElementForScratchpad = target;
+  showInlineInput(e.clientX, e.clientY);
 }
 
 function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement | null): void {
@@ -663,8 +709,8 @@ function showActiveIndicator(): void {
   activeIndicator.innerHTML = `
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
-      <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Copy</span>
-      <span class="shortcut"><kbd>⌘+Click</kbd>/<kbd>⌘+Enter</kbd> + Editor</span>
+      <span class="shortcut"><kbd>Click</kbd> Add to scratchpad</span>
+      <span class="shortcut"><kbd>⌘+Click</kbd> Instant copy + editor</span>
       <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
       <span class="shortcut"><kbd>Esc</kbd> Cancel</span>
     </div>
@@ -753,4 +799,357 @@ function hideFloatingLabel(): void {
     floatingLabel.remove();
     floatingLabel = null;
   }
+}
+
+// ============================================================================
+// Inline Input Functions
+// ============================================================================
+
+function showInlineInput(x: number, y: number): void {
+  hideInlineInput();
+
+  inlineInput = document.createElement('div');
+  inlineInput.className = 'vue-grab-inline-input';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Add a note (Enter to add, Esc to cancel)';
+  input.className = 'vue-grab-inline-input-field';
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleInlineInputSubmit(input.value);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideInlineInput();
+    }
+  });
+
+  // Prevent click events from bubbling
+  input.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  inlineInput.appendChild(input);
+  document.body.appendChild(inlineInput);
+
+  // Position the input near the click
+  const inputWidth = 300;
+  const inputHeight = 40;
+  let left = x;
+  let top = y + 10;
+
+  // Adjust if near viewport edge
+  if (left + inputWidth > window.innerWidth - 10) {
+    left = window.innerWidth - inputWidth - 10;
+  }
+  if (left < 10) left = 10;
+
+  if (top + inputHeight > window.innerHeight - 10) {
+    top = y - inputHeight - 10;
+  }
+
+  inlineInput.style.left = `${left}px`;
+  inlineInput.style.top = `${top}px`;
+
+  // Focus the input
+  setTimeout(() => input.focus(), 10);
+
+  // Show scratchpad panel if not already visible
+  showScratchpadPanel();
+}
+
+function hideInlineInput(): void {
+  if (inlineInput) {
+    inlineInput.remove();
+    inlineInput = null;
+  }
+  pendingElementForScratchpad = null;
+  clickPosition = null;
+}
+
+function handleInlineInputSubmit(note: string): void {
+  hideInlineInput();
+
+  if (!pendingElementForScratchpad) {
+    showToast('No element selected', 'error');
+    return;
+  }
+
+  // Store the note and trigger extraction
+  pendingScratchpadNote = note || '(no note)';
+  pendingAction = 'scratchpad';
+
+  // Ensure element has ID for extraction
+  if (!pendingElementForScratchpad.getAttribute('data-vue-grab-id')) {
+    const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
+    pendingElementForScratchpad.setAttribute('data-vue-grab-id', elementId);
+  }
+
+  // Set timeout for extraction
+  const extractionTimeout = window.setTimeout(() => {
+    if (pendingAction === 'scratchpad') {
+      showToast('Extraction timed out. Try again.', 'error');
+      pendingAction = null;
+    }
+  }, VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
+
+  window._vueGrabExtractionTimeout = extractionTimeout;
+
+  // Request extraction
+  sendBridgeRequest({
+    type: 'VUE_GRAB_EXTRACT',
+    elementId: pendingElementForScratchpad.getAttribute('data-vue-grab-id')!
+  });
+}
+
+// ============================================================================
+// Scratchpad Panel Functions
+// ============================================================================
+
+function showScratchpadPanel(): void {
+  if (scratchpadPanel) return;
+
+  scratchpadPanel = document.createElement('div');
+  scratchpadPanel.className = 'vue-grab-scratchpad-panel';
+  updateScratchpadPanelContent();
+  document.body.appendChild(scratchpadPanel);
+}
+
+function updateScratchpadPanel(): void {
+  if (!scratchpadPanel) {
+    showScratchpadPanel();
+    return;
+  }
+  updateScratchpadPanelContent();
+}
+
+function updateScratchpadPanelContent(): void {
+  if (!scratchpadPanel) return;
+
+  const itemsHtml = scratchpad.length > 0
+    ? scratchpad.map((item, index) => `
+        <div class="vue-grab-scratchpad-item" data-id="${item.id}">
+          <div class="vue-grab-scratchpad-item-header">
+            <span class="vue-grab-scratchpad-item-name">${item.componentData.componentName}</span>
+            <button class="vue-grab-scratchpad-item-remove" data-index="${index}">×</button>
+          </div>
+          <div class="vue-grab-scratchpad-item-note">${escapeHtml(item.note)}</div>
+        </div>
+      `).join('')
+    : '<div class="vue-grab-scratchpad-empty">Click elements to add to scratchpad</div>';
+
+  scratchpadPanel.innerHTML = `
+    <div class="vue-grab-scratchpad-header">
+      <span class="vue-grab-scratchpad-title">Scratchpad (${scratchpad.length})</span>
+      ${scratchpad.length > 0 ? `
+        <button class="vue-grab-scratchpad-clear">Clear</button>
+      ` : ''}
+    </div>
+    <div class="vue-grab-scratchpad-items">
+      ${itemsHtml}
+    </div>
+    ${scratchpad.length > 0 ? `
+      <div class="vue-grab-scratchpad-actions">
+        <button class="vue-grab-scratchpad-copy">Copy All</button>
+        <button class="vue-grab-scratchpad-send">Send to IDE</button>
+      </div>
+    ` : ''}
+  `;
+
+  // Add event listeners
+  const removeButtons = scratchpadPanel.querySelectorAll('.vue-grab-scratchpad-item-remove');
+  removeButtons.forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const index = parseInt((btn as HTMLElement).dataset.index || '0', 10);
+      removeScratchpadItem(index);
+    });
+  });
+
+  const clearBtn = scratchpadPanel.querySelector('.vue-grab-scratchpad-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      scratchpad = [];
+      updateScratchpadPanel();
+      showToast('Scratchpad cleared', 'success');
+    });
+  }
+
+  const copyBtn = scratchpadPanel.querySelector('.vue-grab-scratchpad-copy');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyScratchpadToClipboard();
+    });
+  }
+
+  const sendBtn = scratchpadPanel.querySelector('.vue-grab-scratchpad-send');
+  if (sendBtn) {
+    sendBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendScratchpadToIDE();
+    });
+  }
+}
+
+function hideScratchpadPanel(): void {
+  if (scratchpadPanel) {
+    scratchpadPanel.remove();
+    scratchpadPanel = null;
+  }
+}
+
+function removeScratchpadItem(index: number): void {
+  if (index >= 0 && index < scratchpad.length) {
+    const removed = scratchpad.splice(index, 1)[0];
+    updateScratchpadPanel();
+    showToast(`Removed "${removed.componentData.componentName}" from scratchpad`, 'success');
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function copyScratchpadToClipboard(): void {
+  if (scratchpad.length === 0) {
+    showToast('Scratchpad is empty', 'error');
+    return;
+  }
+
+  const formatted = formatScratchpadForClaudeCCode(scratchpad);
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(formatted).catch(err => {
+      console.error('Could not copy to clipboard:', err);
+      fallbackCopy(formatted);
+    });
+  } else {
+    fallbackCopy(formatted);
+  }
+
+  showToast(`✓ Copied ${scratchpad.length} component(s) to clipboard!`, 'success');
+}
+
+function sendScratchpadToIDE(): void {
+  if (scratchpad.length === 0) {
+    showToast('Scratchpad is empty', 'error');
+    return;
+  }
+
+  // Copy to clipboard first
+  copyScratchpadToClipboard();
+
+  // Open the first file that has a path
+  const itemWithPath = scratchpad.find(item => item.componentData.filePath);
+  if (itemWithPath) {
+    const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
+    if (config && itemWithPath.componentData.filePath) {
+      const url = config.buildUrl(itemWithPath.componentData.filePath);
+      try {
+        window.open(url, '_blank');
+        showToast(`✓ Copied ${scratchpad.length} component(s) and opening in ${config.name}...`, 'success');
+      } catch (e) {
+        console.error('Vue Grab: Could not open editor:', e);
+      }
+    }
+  }
+
+  // Deactivate after sending
+  deactivate();
+  isActive = false;
+}
+
+function formatScratchpadForClaudeCCode(items: ScratchpadItem[]): string {
+  let output = `# Vue Component Context - Scratchpad (${items.length} items)
+
+`;
+
+  items.forEach((item, index) => {
+    const data = item.componentData;
+    output += `## ${index + 1}. ${data.componentName}
+**Note**: ${item.note}
+**File**: ${data.filePath || 'Unknown'}
+
+`;
+
+    // Add element info if available
+    if (data.element) {
+      output += `### Element
+- **Tag**: <${data.element.tagName}>
+- **ID**: ${data.element.id || 'None'}
+- **Classes**: ${data.element.classes?.join(', ') || 'None'}
+
+`;
+    }
+
+    // Add props
+    output += `### Props
+\`\`\`json
+${JSON.stringify(data.props, null, 2)}
+\`\`\`
+
+`;
+
+    // Add data/state
+    output += `### Data/State
+\`\`\`json
+${JSON.stringify(data.data || data.setupState, null, 2)}
+\`\`\`
+
+`;
+
+    // Add computed and methods on one line each
+    if (data.computed?.length) {
+      output += `### Computed Properties
+${data.computed.join(', ')}
+
+`;
+    }
+
+    if (data.methods?.length) {
+      output += `### Methods
+${data.methods.join(', ')}
+
+`;
+    }
+
+    // Add Pinia stores if present
+    if (data.piniaStores && data.piniaStores.length > 0) {
+      const definitelyUsed = data.piniaStores.filter(s => s.usedByComponent === 'definitely');
+      if (definitelyUsed.length > 0) {
+        output += `### Pinia Stores (Definitely Used)\n`;
+        definitelyUsed.forEach(store => {
+          output += `- **${store.id}**: ${JSON.stringify(store.state)}\n`;
+        });
+        output += `\n`;
+      }
+    }
+
+    // Add router state if present
+    if (data.routerState) {
+      output += `### Router
+- **Path**: ${data.routerState.path}
+- **Params**: ${JSON.stringify(data.routerState.params)}
+- **Query**: ${JSON.stringify(data.routerState.query)}
+
+`;
+    }
+
+    output += `---
+
+`;
+  });
+
+  output += `*Generated by Vue Grab - Scratchpad*
+`;
+
+  return output;
 }

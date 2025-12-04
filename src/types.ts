@@ -163,6 +163,16 @@ export interface ComponentData {
   element: ElementInfo | null;
 }
 
+/**
+ * Scratchpad item - a component with an associated note
+ */
+export interface ScratchpadItem {
+  id: string;
+  note: string;
+  componentData: ComponentData;
+  timestamp: number;
+}
+
 // ============================================================================
 // Component Hierarchy Types
 // ============================================================================

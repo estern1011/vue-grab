@@ -161,3 +161,197 @@
   font-size: 10px;
   opacity: 0.7;
 }
+
+/* Inline input for scratchpad notes */
+.vue-grab-inline-input {
+  position: fixed;
+  z-index: 2147483647;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.vue-grab-inline-input-field {
+  width: 300px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  border: 2px solid #42b883;
+  border-radius: 8px;
+  background: #fff;
+  color: #2c3e50;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+.vue-grab-inline-input-field:focus {
+  border-color: #3aa876;
+  box-shadow: 0 4px 20px rgba(66, 184, 131, 0.4);
+}
+
+.vue-grab-inline-input-field::placeholder {
+  color: #999;
+  font-size: 12px;
+}
+
+/* Scratchpad panel */
+.vue-grab-scratchpad-panel {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 320px;
+  max-height: 400px;
+  background: #2c3e50;
+  color: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  z-index: 999998;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vue-grab-scratchpad-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vue-grab-scratchpad-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.vue-grab-scratchpad-clear {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vue-grab-scratchpad-clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+}
+
+.vue-grab-scratchpad-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  max-height: 250px;
+}
+
+.vue-grab-scratchpad-empty {
+  padding: 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.vue-grab-scratchpad-item {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  transition: background 0.15s ease;
+}
+
+.vue-grab-scratchpad-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.vue-grab-scratchpad-item:last-child {
+  margin-bottom: 0;
+}
+
+.vue-grab-scratchpad-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.vue-grab-scratchpad-item-name {
+  font-weight: 600;
+  color: #42b883;
+  font-size: 12px;
+}
+
+.vue-grab-scratchpad-item-remove {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.15s ease;
+}
+
+.vue-grab-scratchpad-item-remove:hover {
+  color: #e74c3c;
+}
+
+.vue-grab-scratchpad-item-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  word-break: break-word;
+}
+
+.vue-grab-scratchpad-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vue-grab-scratchpad-copy,
+.vue-grab-scratchpad-send {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vue-grab-scratchpad-copy {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.vue-grab-scratchpad-copy:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.vue-grab-scratchpad-send {
+  background: #42b883;
+  color: white;
+}
+
+.vue-grab-scratchpad-send:hover {
+  background: #3aa876;
+}
