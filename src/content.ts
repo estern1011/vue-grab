@@ -5,8 +5,9 @@
  * It handles all UI elements and user interaction.
  */
 
-import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
+import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG, VUE_GRAB_AGENT_SERVERS } from './constants';
 import type { ComponentData, ComponentInfo, ScratchpadItem } from './types';
+import type { AgentServerConfig } from './constants';
 
 interface BridgeHandshake {
   bridgeId: string;
@@ -57,6 +58,15 @@ let scratchpadPanel: HTMLElement | null = null;
 let inlineInput: HTMLElement | null = null;
 let pendingElementForScratchpad: HTMLElement | null = null;
 let clickPosition: { x: number; y: number } | null = null;
+
+// Agent server state
+interface AgentStatus {
+  available: boolean;
+  name: string;
+  config: AgentServerConfig;
+}
+let availableAgents: AgentStatus[] = [];
+let agentCheckInterval: number | null = null;
 
 // Throttling state for mouseover events
 let mouseoverThrottleTimer: number | null = null;
@@ -917,6 +927,9 @@ function showScratchpadPanel(): void {
   scratchpadPanel.className = 'vue-grab-scratchpad-panel';
   updateScratchpadPanelContent();
   document.body.appendChild(scratchpadPanel);
+
+  // Start checking for agent servers
+  startAgentCheck();
 }
 
 function updateScratchpadPanel(): void {
@@ -942,6 +955,46 @@ function updateScratchpadPanelContent(): void {
       `).join('')
     : '<div class="vue-grab-scratchpad-empty">Click elements to add to scratchpad</div>';
 
+  // Build agent status indicator
+  const connectedAgents = availableAgents.filter(a => a.available);
+  const agentStatusHtml = connectedAgents.length > 0
+    ? `<div class="vue-grab-agent-status connected">
+        <span class="vue-grab-agent-dot"></span>
+        ${connectedAgents.map(a => a.name).join(', ')}
+      </div>`
+    : `<div class="vue-grab-agent-status disconnected">
+        <span class="vue-grab-agent-dot"></span>
+        No agents detected
+      </div>`;
+
+  // Build action buttons
+  let actionsHtml = '';
+  if (scratchpad.length > 0) {
+    if (connectedAgents.length > 0) {
+      // Show agent-specific buttons when agents are available
+      const agentButtons = connectedAgents.map(agent =>
+        `<button class="vue-grab-scratchpad-agent" data-agent="${agent.name}">
+          Send to ${agent.name}
+        </button>`
+      ).join('');
+
+      actionsHtml = `
+        <div class="vue-grab-scratchpad-actions">
+          <button class="vue-grab-scratchpad-copy">Copy</button>
+          ${agentButtons}
+        </div>
+      `;
+    } else {
+      // Fallback to original buttons when no agents
+      actionsHtml = `
+        <div class="vue-grab-scratchpad-actions">
+          <button class="vue-grab-scratchpad-copy">Copy All</button>
+          <button class="vue-grab-scratchpad-send">Send to IDE</button>
+        </div>
+      `;
+    }
+  }
+
   scratchpadPanel.innerHTML = `
     <div class="vue-grab-scratchpad-header">
       <span class="vue-grab-scratchpad-title">Scratchpad (${scratchpad.length})</span>
@@ -949,15 +1002,11 @@ function updateScratchpadPanelContent(): void {
         <button class="vue-grab-scratchpad-clear">Clear</button>
       ` : ''}
     </div>
+    ${agentStatusHtml}
     <div class="vue-grab-scratchpad-items">
       ${itemsHtml}
     </div>
-    ${scratchpad.length > 0 ? `
-      <div class="vue-grab-scratchpad-actions">
-        <button class="vue-grab-scratchpad-copy">Copy All</button>
-        <button class="vue-grab-scratchpad-send">Send to IDE</button>
-      </div>
-    ` : ''}
+    ${actionsHtml}
   `;
 
   // Add event listeners
@@ -995,6 +1044,23 @@ function updateScratchpadPanelContent(): void {
       sendScratchpadToIDE();
     });
   }
+
+  // Add event listeners for agent buttons
+  const agentButtons = scratchpadPanel.querySelectorAll('.vue-grab-scratchpad-agent');
+  agentButtons.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const agentName = (btn as HTMLElement).dataset.agent;
+      const agent = availableAgents.find(a => a.name === agentName && a.available);
+      if (agent) {
+        const success = await sendToAgent(agent);
+        if (success) {
+          deactivate();
+          isActive = false;
+        }
+      }
+    });
+  });
 }
 
 function hideScratchpadPanel(): void {
@@ -1002,6 +1068,7 @@ function hideScratchpadPanel(): void {
     scratchpadPanel.remove();
     scratchpadPanel = null;
   }
+  stopAgentCheck();
 }
 
 function removeScratchpadItem(index: number): void {
@@ -1152,4 +1219,121 @@ ${data.methods.join(', ')}
 `;
 
   return output;
+}
+
+// ============================================================================
+// Agent Server Integration Functions
+// ============================================================================
+
+async function checkAgentServer(config: AgentServerConfig): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+    const response = await fetch(config.checkEndpoint || config.endpoint, {
+      method: 'GET',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function checkAllAgentServers(): Promise<void> {
+  const results: AgentStatus[] = [];
+
+  for (const [key, config] of Object.entries(VUE_GRAB_AGENT_SERVERS)) {
+    const available = await checkAgentServer(config);
+    results.push({
+      available,
+      name: config.name,
+      config
+    });
+  }
+
+  availableAgents = results;
+  updateScratchpadPanel();
+}
+
+function startAgentCheck(): void {
+  // Check immediately
+  checkAllAgentServers();
+
+  // Then check every 5 seconds
+  if (agentCheckInterval === null) {
+    agentCheckInterval = window.setInterval(checkAllAgentServers, 5000);
+  }
+}
+
+function stopAgentCheck(): void {
+  if (agentCheckInterval !== null) {
+    clearInterval(agentCheckInterval);
+    agentCheckInterval = null;
+  }
+  availableAgents = [];
+}
+
+async function sendToAgent(agent: AgentStatus): Promise<boolean> {
+  if (scratchpad.length === 0) {
+    showToast('Scratchpad is empty', 'error');
+    return false;
+  }
+
+  const formatted = formatScratchpadForClaudeCCode(scratchpad);
+
+  // Build payload with component data
+  const payload = {
+    type: 'vue-grab-context',
+    source: 'vue-grab-extension',
+    timestamp: Date.now(),
+    content: formatted,
+    components: scratchpad.map(item => ({
+      name: item.componentData.componentName,
+      filePath: item.componentData.filePath,
+      note: item.note
+    }))
+  };
+
+  try {
+    const response = await fetch(agent.config.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      showToast(`✓ Sent ${scratchpad.length} component(s) to ${agent.name}!`, 'success');
+      return true;
+    } else {
+      showToast(`Failed to send to ${agent.name}: ${response.statusText}`, 'error');
+      return false;
+    }
+  } catch (error) {
+    showToast(`Could not connect to ${agent.name}`, 'error');
+    return false;
+  }
+}
+
+async function sendToFirstAvailableAgent(): Promise<void> {
+  const available = availableAgents.filter(a => a.available);
+
+  if (available.length === 0) {
+    // No agents available, fall back to clipboard + IDE
+    sendScratchpadToIDE();
+    return;
+  }
+
+  // Try to send to first available agent
+  const success = await sendToAgent(available[0]);
+
+  if (success) {
+    // Deactivate after successful send
+    deactivate();
+    isActive = false;
+  }
 }

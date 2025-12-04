@@ -46,6 +46,29 @@ export const VUE_GRAB_CONFIG: VueGrabConfig = {
   DEFAULT_EDITOR: 'cursor'
 };
 
+// Agent server configurations for direct integration
+export interface AgentServerConfig {
+  name: string;
+  port: number;
+  endpoint: string;
+  checkEndpoint?: string;
+}
+
+export const VUE_GRAB_AGENT_SERVERS: Record<string, AgentServerConfig> = {
+  claudeCode: {
+    name: 'Claude Code',
+    port: 4567,
+    endpoint: 'http://localhost:4567/context',
+    checkEndpoint: 'http://localhost:4567/health'
+  },
+  cursor: {
+    name: 'Cursor',
+    port: 5567,
+    endpoint: 'http://localhost:5567/context',
+    checkEndpoint: 'http://localhost:5567/health'
+  }
+};
+
 // Message types for communication between content.js and injected.js
 export const VUE_GRAB_MESSAGE_TYPES: MessageTypes = {
   // content.js -> injected.js

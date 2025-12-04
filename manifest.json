@@ -8,6 +8,12 @@
     "clipboardWrite",
     "storage"
   ],
+  "host_permissions": [
+    "http://localhost:4567/*",
+    "http://localhost:5567/*",
+    "http://127.0.0.1:4567/*",
+    "http://127.0.0.1:5567/*"
+  ],
   "action": {
     "default_popup": "src/popup.html",
     "default_icon": {

@@ -355,3 +355,67 @@
 .vue-grab-scratchpad-send:hover {
   background: #3aa876;
 }
+
+/* Agent status indicator */
+.vue-grab-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.vue-grab-agent-status.connected {
+  color: #42b883;
+}
+
+.vue-grab-agent-status.disconnected {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.vue-grab-agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.vue-grab-agent-status.connected .vue-grab-agent-dot {
+  background: #42b883;
+  box-shadow: 0 0 8px rgba(66, 184, 131, 0.6);
+  animation: pulse 2s infinite;
+}
+
+.vue-grab-agent-status.disconnected .vue-grab-agent-dot {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Agent send button */
+.vue-grab-scratchpad-agent {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.vue-grab-scratchpad-agent:hover {
+  background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
