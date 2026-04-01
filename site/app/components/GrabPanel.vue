@@ -129,18 +129,18 @@ function padIndex(idx: number) {
               <span class="font-mono text-[10px] font-bold text-[#42b883]">{{ padIndex(idx) }}</span>
               <span class="text-[13px] font-semibold tracking-tight text-white">{{ item.data.componentName }}</span>
             </div>
-            <button class="text-sm text-[#333] transition hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
+            <button class="text-sm text-[#8b8ba7] transition hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
           </div>
 
           <!-- Card body -->
           <div class="flex flex-col gap-2 px-3.5 py-2.5">
-            <div v-if="item.data.filePath" class="truncate font-mono text-[10px] text-[#4a4a6a]">
+            <div v-if="item.data.filePath" class="truncate font-mono text-[10px] text-[#8b8ba7]">
               {{ shortPath(item.data.filePath) }}
             </div>
 
             <input
               type="text"
-              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] outline-none transition placeholder:text-[#3a3a5a]"
+              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] outline-none transition placeholder:text-[#8b8ba7]"
               :class="item.comment
                 ? 'border-[#42b883]/[0.12] bg-[#42b883]/[0.04] focus:border-[#42b883]'
                 : 'border-white/[0.06] focus:border-[#42b883]'"
