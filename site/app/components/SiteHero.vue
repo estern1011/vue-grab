@@ -27,6 +27,7 @@ defineEmits<{
       </div>
 
       <div id="try-it" class="rounded-xl border border-white/[0.06] bg-[#0d0d1a] p-6">
+        <h2 class="mb-3 text-lg font-semibold text-white">Interactive demo</h2>
         <div class="mb-4 flex items-center justify-between">
           <p class="text-sm text-[#9b9bb2]">
             <template v-if="!grabActive">
