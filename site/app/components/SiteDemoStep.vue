@@ -12,6 +12,6 @@ defineProps<{
       {{ step }}
     </div>
     <h3 class="mb-1 text-sm font-semibold text-white">{{ title }}</h3>
-    <p class="text-xs text-[#888]">{{ description }}</p>
+    <p class="text-xs text-[#9b9bb2]">{{ description }}</p>
   </div>
 </template>

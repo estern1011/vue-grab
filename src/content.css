@@ -162,13 +162,13 @@
 }
 
 .vue-grab-breadcrumb-item.parent {
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 .vue-grab-breadcrumb-hint {
   margin-top: 6px;
   font-size: 10px;
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 /* ============================================================================
@@ -224,7 +224,7 @@
 
 .vue-grab-panel-count {
   font-size: 11px;
-  color: #888;
+  color: #9b9bb2;
   background: rgba(255, 255, 255, 0.06);
   padding: 2px 8px;
   border-radius: 10px;
@@ -233,7 +233,7 @@
 .vue-grab-panel-close {
   background: none;
   border: none;
-  color: #888;
+  color: #9b9bb2;
   font-size: 20px;
   cursor: pointer;
   padding: 0 4px;
@@ -315,7 +315,7 @@
 .vue-grab-panel-item-remove {
   background: none;
   border: none;
-  color: #666;
+  color: #8b8ba7;
   font-size: 18px;
   cursor: pointer;
   padding: 0 4px;
@@ -329,7 +329,7 @@
 
 .vue-grab-panel-item-file {
   font-size: 11px;
-  color: #888;
+  color: #9b9bb2;
   font-family: monospace;
   margin-bottom: 8px;
   word-break: break-all;
@@ -359,7 +359,7 @@
 }
 
 .vue-grab-panel-item-comment::placeholder {
-  color: #555;
+  color: #8b8ba7;
 }
 
 /* ============================================================================
@@ -410,7 +410,7 @@
 .vue-grab-ctx-section > summary::before {
   content: '\25B6';
   font-size: 8px;
-  color: #666;
+  color: #8b8ba7;
   transition: transform 0.15s;
 }
 
@@ -426,7 +426,7 @@
 .vue-grab-ctx-count {
   font-weight: 400;
   font-size: 10px;
-  color: #666;
+  color: #8b8ba7;
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 5px;
   border-radius: 8px;
@@ -461,8 +461,8 @@
 .vue-grab-ctx-val--string { color: #a6d189; }
 .vue-grab-ctx-val--num { color: #ef9f76; }
 .vue-grab-ctx-val--bool { color: #e78284; }
-.vue-grab-ctx-val--null { color: #737994; font-style: italic; }
-.vue-grab-ctx-val--ref { color: #737994; }
+.vue-grab-ctx-val--null { color: #9498b8; font-style: italic; }
+.vue-grab-ctx-val--ref { color: #9498b8; }
 .vue-grab-ctx-val--truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 
 /* Inline expandable values (arrays/objects) */
@@ -489,7 +489,7 @@
 .vue-grab-ctx-expand::before {
   content: '\25B6';
   font-size: 7px;
-  color: #666;
+  color: #8b8ba7;
   margin-right: 4px;
   display: inline-block;
   transition: transform 0.15s;
@@ -515,14 +515,14 @@
 }
 
 .vue-grab-ctx-key--index {
-  color: #737994;
+  color: #9498b8;
   min-width: 12px;
 }
 
 .vue-grab-ctx-more {
   padding: 2px 8px 2px 20px;
   font-size: 10px;
-  color: #666;
+  color: #8b8ba7;
   font-style: italic;
 }
 
@@ -557,13 +557,13 @@
 .vue-grab-ctx-badge--success { background: rgba(66, 184, 131, 0.2); color: #42b883; }
 .vue-grab-ctx-badge--loading { background: rgba(239, 159, 118, 0.2); color: #ef9f76; }
 .vue-grab-ctx-badge--error { background: rgba(231, 130, 132, 0.2); color: #e78284; }
-.vue-grab-ctx-badge--idle { background: rgba(255, 255, 255, 0.06); color: #888; }
+.vue-grab-ctx-badge--idle { background: rgba(255, 255, 255, 0.06); color: #9b9bb2; }
 
 /* Sub-labels inside sections */
 .vue-grab-ctx-sub {
   padding: 4px 8px 2px 20px;
   font-size: 10px;
-  color: #888;
+  color: #9b9bb2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -590,7 +590,7 @@
 .vue-grab-ctx-empty {
   padding: 12px;
   text-align: center;
-  color: #555;
+  color: #8b8ba7;
   font-size: 11px;
   font-style: italic;
 }
@@ -608,13 +608,13 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #555;
+  color: #8b8ba7;
 }
 
 .vue-grab-panel-editor-btn {
   background: none;
   border: none;
-  color: #666;
+  color: #8b8ba7;
   font-size: 11px;
   font-weight: 500;
   font-family: inherit;
@@ -625,7 +625,7 @@
 }
 
 .vue-grab-panel-editor-btn:hover {
-  color: #888;
+  color: #9b9bb2;
 }
 
 .vue-grab-panel-editor-btn.active {
@@ -703,7 +703,7 @@
 .vue-grab-panel-empty {
   padding: 40px 20px;
   text-align: center;
-  color: #666;
+  color: #8b8ba7;
   font-size: 13px;
   line-height: 1.6;
 }

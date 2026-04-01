@@ -24,7 +24,7 @@ const navItems = [
         class="rounded-md px-3 py-2 text-left text-[13px] transition"
         :class="activeTab === item.key
           ? 'bg-[#42b883]/10 font-medium text-[#42b883]'
-          : 'text-[#888] hover:bg-white/[0.03]'"
+          : 'text-[#9b9bb2] hover:bg-white/[0.03]'"
         @click="$emit('navigate', item.key)"
       >
         {{ item.label }}

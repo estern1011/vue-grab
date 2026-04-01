@@ -11,7 +11,7 @@
         </SiteInstallStep>
 
         <SiteInstallStep :step="2" title="Load in Chrome">
-          <p class="text-sm leading-relaxed text-[#888]">
+          <p class="text-sm leading-relaxed text-[#9b9bb2]">
             Go to <code class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-[#42b883]">chrome://extensions</code>
             &rarr; Enable Developer Mode &rarr; Load Unpacked &rarr; Select the
             <code class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-xs text-[#42b883]">dist/</code> folder
@@ -19,7 +19,7 @@
         </SiteInstallStep>
 
         <SiteInstallStep :step="3" title="Grab & go">
-          <p class="text-sm leading-relaxed text-[#888]">
+          <p class="text-sm leading-relaxed text-[#9b9bb2]">
             Navigate to any Vue app, press
             <kbd class="rounded border border-white/10 bg-white/[0.06] px-2 py-0.5 font-mono text-xs text-[#e0e0e0]">Alt+Shift+V</kbd>
             or click the extension icon, and start clicking components.

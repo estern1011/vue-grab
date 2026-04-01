@@ -68,22 +68,34 @@ const sendLabel = computed(() => {
   const name = currentEditor.value.name
   return currentEditor.value.canSendDirect ? `Send to ${name}` : `Copy for ${name}`
 })
+
+function shortPath(filePath: string) {
+  const idx = filePath.indexOf('components/')
+  if (idx !== -1) return '~/' + filePath.slice(idx)
+  const srcIdx = filePath.indexOf('src/')
+  if (srcIdx !== -1) return '~/' + filePath.slice(srcIdx)
+  return filePath
+}
+
+function padIndex(idx: number) {
+  return String(idx + 1).padStart(2, '0')
+}
 </script>
 
 <template>
   <Transition name="panel">
-    <div v-if="isActive" class="vue-grab-embedded-panel fixed right-0 top-0 z-[999998] flex h-screen w-[380px] flex-col border-l border-white/[0.06] bg-[#1a1a2e] font-sans text-[13px] text-[#e0e0e0] shadow-2xl">
+    <div v-if="isActive" class="vue-grab-embedded-panel fixed right-0 top-0 z-[999998] flex h-screen w-[380px] flex-col border-l border-white/[0.04] bg-[#101020] font-sans text-[13px] text-[#e0e0e0] shadow-2xl">
       <!-- Header -->
-      <div class="border-b border-white/[0.06] bg-[#16213e] px-4 py-3">
+      <div class="border-b border-white/[0.06] bg-[#13132a] px-4 py-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             <span class="text-[15px] font-bold text-[#42b883]">Vue Grab</span>
             <Badge variant="secondary">{{ items.length }} component{{ items.length !== 1 ? 's' : '' }}</Badge>
           </div>
-          <button class="text-lg text-[#888] transition hover:text-white" @click="emit('close')">&times;</button>
+          <button class="text-lg text-[#9b9bb2] transition hover:text-white" @click="emit('close')">&times;</button>
         </div>
         <div class="mt-2.5 flex items-center gap-2">
-          <span class="text-[10px] uppercase tracking-wider text-[#555]">Send to</span>
+          <span class="text-[10px] uppercase tracking-wider text-[#8b8ba7]">Send to</span>
           <div class="flex gap-1">
             <button
               v-for="editor in editors"
@@ -91,7 +103,7 @@ const sendLabel = computed(() => {
               class="rounded px-2 py-0.5 text-[11px] font-medium transition"
               :class="selectedEditor === editor.key
                 ? 'bg-[#42b883]/15 text-[#42b883]'
-                : 'text-[#666] hover:text-[#888]'"
+                : 'text-[#8b8ba7] hover:text-[#9b9bb2]'"
               @click="selectedEditor = editor.key"
             >
               {{ editor.name }}
@@ -101,101 +113,135 @@ const sendLabel = computed(() => {
       </div>
 
       <!-- Items -->
-      <div class="flex-1 overflow-y-auto p-2">
-        <div v-if="items.length === 0" class="py-12 text-center text-sm text-[#555]">
+      <div class="flex-1 overflow-y-auto p-2.5">
+        <div v-if="items.length === 0" class="py-12 text-center text-sm text-[#8b8ba7]">
           Click any element in the demo to grab its component context.
         </div>
 
         <div
           v-for="(item, idx) in items"
           :key="item.id"
-          class="mb-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3"
+          class="mb-1.5 overflow-hidden rounded-[10px] border border-white/[0.05] bg-white/[0.025]"
         >
-          <div class="mb-1 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="flex h-5 w-5 items-center justify-center rounded-full bg-[#42b883] text-[10px] font-bold text-white">{{ idx + 1 }}</span>
-              <span class="text-sm font-semibold text-white">{{ item.data.componentName }}</span>
+          <!-- Card header -->
+          <div class="flex items-center justify-between border-b border-white/[0.04] px-3.5 py-2.5">
+            <div class="flex items-center gap-2.5">
+              <span class="font-mono text-[10px] font-bold text-[#42b883]">{{ padIndex(idx) }}</span>
+              <span class="text-[13px] font-semibold tracking-tight text-white">{{ item.data.componentName }}</span>
             </div>
-            <button class="text-[#666] transition hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
+            <button class="text-sm text-[#333] transition hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
           </div>
 
-          <div v-if="item.data.filePath" class="mb-2 truncate font-mono text-[10px] text-[#888]">
-            {{ item.data.filePath }}
-          </div>
-
-          <input
-            type="text"
-            class="mb-2 w-full rounded border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 text-xs text-[#e0e0e0] outline-none placeholder:text-[#555] focus:border-[#42b883]"
-            placeholder="Add a note for the agent..."
-            :value="item.comment"
-            @input="emit('update:comment', item.id, ($event.target as HTMLInputElement).value)"
-          />
-
-          <!-- Props -->
-          <details v-if="item.data.props && Object.keys(item.data.props).length" open class="mb-1">
-            <summary class="flex cursor-pointer items-center gap-1 py-1 text-[11px] font-semibold text-[#bbb]">
-              Props
-              <span class="rounded-full bg-white/[0.06] px-1.5 text-[10px] font-normal text-[#666]">{{ Object.keys(item.data.props).length }}</span>
-            </summary>
-            <div class="pl-2">
-              <ValueTree v-for="(val, key) in item.data.props" :key="key" :name="String(key)" :value="val" :depth="0" />
+          <!-- Card body -->
+          <div class="flex flex-col gap-2 px-3.5 py-2.5">
+            <div v-if="item.data.filePath" class="truncate font-mono text-[10px] text-[#4a4a6a]">
+              {{ shortPath(item.data.filePath) }}
             </div>
-          </details>
 
-          <!-- State -->
-          <details v-if="item.data.state && Object.keys(item.data.state).length" class="mb-1">
-            <summary class="flex cursor-pointer items-center gap-1 py-1 text-[11px] font-semibold text-[#bbb]">
-              State
-              <span class="rounded-full bg-white/[0.06] px-1.5 text-[10px] font-normal text-[#666]">{{ Object.keys(item.data.state).length }}</span>
-            </summary>
-            <div class="pl-2">
-              <ValueTree v-for="(val, key) in item.data.state" :key="key" :name="String(key)" :value="val" :depth="0" />
+            <input
+              type="text"
+              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] outline-none transition placeholder:text-[#3a3a5a]"
+              :class="item.comment
+                ? 'border-[#42b883]/[0.12] bg-[#42b883]/[0.04] focus:border-[#42b883]'
+                : 'border-white/[0.06] focus:border-[#42b883]'"
+              placeholder="Add a note..."
+              :value="item.comment"
+              @input="emit('update:comment', item.id, ($event.target as HTMLInputElement).value)"
+            />
+
+            <!-- Props -->
+            <div v-if="item.data.props && Object.keys(item.data.props).length">
+              <div class="mb-1 flex items-center gap-1.5 pb-1">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Props</span>
+                <div class="h-px flex-1 bg-white/[0.04]" />
+                <span class="font-mono text-[10px] text-[#8b8ba7]">{{ Object.keys(item.data.props).length }}</span>
+              </div>
+              <div class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
+                <div v-for="(val, key) in item.data.props" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
+                  <span class="text-[#8a7cc8]">{{ key }}</span>
+                  <ValueTree :value="val" :depth="0" class="text-right" />
+                </div>
+              </div>
             </div>
-          </details>
 
-          <!-- Store -->
-          <details v-if="item.data.storeName" class="mb-1">
-            <summary class="flex cursor-pointer items-center gap-1 py-1 text-[11px] font-semibold text-[#bbb]">
-              Store: {{ item.data.storeName }}
-              <Badge variant="default" class="text-[9px]">pinia</Badge>
-            </summary>
-            <div v-if="item.data.storeState" class="pl-2">
-              <ValueTree v-for="(val, key) in item.data.storeState" :key="key" :name="String(key)" :value="val" :depth="0" />
+            <!-- State -->
+            <div v-if="item.data.state && Object.keys(item.data.state).length">
+              <div class="mb-1 flex items-center gap-1.5 pb-1">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">State</span>
+                <div class="h-px flex-1 bg-white/[0.04]" />
+                <span class="font-mono text-[10px] text-[#8b8ba7]">{{ Object.keys(item.data.state).length }}</span>
+              </div>
+              <div class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
+                <div v-for="(val, key) in item.data.state" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
+                  <span class="text-[#8a7cc8]">{{ key }}</span>
+                  <ValueTree :value="val" :depth="0" class="text-right" />
+                </div>
+              </div>
             </div>
-          </details>
 
-          <!-- Computed/Methods -->
-          <div v-if="item.data.computed?.length" class="flex flex-wrap gap-1 py-1">
-            <span class="text-[11px] font-semibold text-[#bbb]">Computed:</span>
-            <span v-for="c in item.data.computed" :key="c" class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-[#c6d0f5]">{{ c }}</span>
-          </div>
-          <div v-if="item.data.methods?.length" class="flex flex-wrap gap-1 py-1">
-            <span class="text-[11px] font-semibold text-[#bbb]">Methods:</span>
-            <span v-for="m in item.data.methods" :key="m" class="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-[#c6d0f5]">{{ m }}</span>
+            <!-- Store -->
+            <div v-if="item.data.storeName">
+              <div class="mb-1 flex items-center gap-1.5 pb-1">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Store</span>
+                <span class="rounded bg-[#42b883]/10 px-1.5 py-px text-[9px] font-medium text-[#42b883]">{{ item.data.storeName }}</span>
+                <div class="h-px flex-1 bg-white/[0.04]" />
+                <span class="font-mono text-[9px] text-[#42b883]/50">pinia</span>
+              </div>
+              <div v-if="item.data.storeState" class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
+                <div v-for="(val, key) in item.data.storeState" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
+                  <span class="text-[#8a7cc8]">{{ key }}</span>
+                  <ValueTree :value="val" :depth="0" class="text-right" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Computed -->
+            <div v-if="item.data.computed?.length">
+              <div class="mb-1 flex items-center gap-1.5 pb-1">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Computed</span>
+                <div class="h-px flex-1 bg-white/[0.04]" />
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <span v-for="c in item.data.computed" :key="c" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-[#8888bb]">{{ c }}</span>
+              </div>
+            </div>
+
+            <!-- Methods -->
+            <div v-if="item.data.methods?.length">
+              <div class="mb-1 flex items-center gap-1.5 pb-1">
+                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Methods</span>
+                <div class="h-px flex-1 bg-white/[0.04]" />
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <span v-for="m in item.data.methods" :key="m" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-[#8888bb]">{{ m }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Actions (matches extension layout) -->
-      <div v-if="items.length > 0" class="flex gap-2 border-t border-white/[0.06] bg-[#16213e] p-3">
+      <!-- Actions -->
+      <div v-if="items.length > 0" class="flex flex-col gap-2 border-t border-white/[0.06] bg-[#13132a] px-4 py-3">
         <button
-          class="flex-1 rounded-md bg-[#42b883] py-2 text-[13px] font-semibold text-white transition hover:bg-[#35a372]"
+          class="w-full rounded-lg bg-gradient-to-br from-[#42b883] to-[#38a576] py-2.5 text-[13px] font-semibold tracking-tight text-white transition hover:brightness-110"
           @click="handleSend"
         >
           {{ sendLabel }}
         </button>
-        <button
-          class="rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-[#aaa] transition hover:border-white/[0.15] hover:text-white"
-          @click="emit('copy')"
-        >
-          Copy
-        </button>
-        <button
-          class="rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs text-[#aaa] transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
-          @click="emit('clear')"
-        >
-          Clear
-        </button>
+        <div class="flex gap-1.5">
+          <button
+            class="flex-1 rounded-md bg-white/[0.04] py-[7px] text-xs font-medium text-[#8b8ba7] transition hover:text-white"
+            @click="emit('copy')"
+          >
+            Copy to clipboard
+          </button>
+          <button
+            class="rounded-md bg-white/[0.04] px-4 py-[7px] text-xs font-medium text-[#8b8ba7] transition hover:bg-red-500/10 hover:text-red-400"
+            @click="emit('clear')"
+          >
+            Clear
+          </button>
+        </div>
       </div>
     </div>
   </Transition>

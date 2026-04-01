@@ -34,25 +34,25 @@ const summary = computed(() => {
 
 <template>
   <div class="flex flex-wrap items-baseline gap-x-2 font-mono text-[11px]" :class="name ? 'py-0.5' : ''">
-    <span v-if="name" class="shrink-0" :class="typeof Number(name) === 'number' && !isNaN(Number(name)) ? 'text-[#737994]' : 'text-[#c4a7e7]'">{{ name }}</span>
+    <span v-if="name" class="shrink-0" :class="typeof Number(name) === 'number' && !isNaN(Number(name)) ? 'text-[#9498b8]' : 'text-[#c4a7e7]'">{{ name }}</span>
 
     <!-- Primitives -->
     <template v-if="!isExpandable || d >= maxDepth">
-      <span v-if="value === null" class="italic text-[#737994]">null</span>
-      <span v-else-if="value === undefined" class="italic text-[#737994]">undefined</span>
+      <span v-if="value === null" class="italic text-[#9498b8]">null</span>
+      <span v-else-if="value === undefined" class="italic text-[#9498b8]">undefined</span>
       <span v-else-if="typeof value === 'boolean'" class="text-[#e78284]">{{ value }}</span>
       <span v-else-if="typeof value === 'number'" class="text-[#ef9f76]">{{ value }}</span>
-      <span v-else-if="typeof value === 'string' && value.startsWith('[')" class="text-[#737994]">{{ value }}</span>
+      <span v-else-if="typeof value === 'string' && value.startsWith('[')" class="text-[#9498b8]">{{ value }}</span>
       <span v-else-if="typeof value === 'string'" class="text-[#a6d189]">"{{ value.length > 60 ? value.slice(0, 57) + '...' : value }}"</span>
       <span v-else-if="d >= maxDepth && isArray" class="text-[#81a1c1]">Array({{ value.length }})</span>
       <span v-else-if="d >= maxDepth" class="text-[#81a1c1]">{{ summary }}</span>
-      <span v-else class="text-[#888]">{{ String(value) }}</span>
+      <span v-else class="text-[#9b9bb2]">{{ String(value) }}</span>
     </template>
 
     <!-- Expandable -->
     <details v-else class="inline w-full" :class="{ 'w-full': true }">
       <summary class="inline cursor-pointer text-[#81a1c1] hover:text-[#88c0d0]">
-        <span class="mr-1 inline-block text-[7px] text-[#666] transition-transform">&#9654;</span>{{ summary }}
+        <span class="mr-1 inline-block text-[7px] text-[#8b8ba7] transition-transform">&#9654;</span>{{ summary }}
       </summary>
       <div class="ml-1 border-l border-white/[0.06] pl-3">
         <ValueTree

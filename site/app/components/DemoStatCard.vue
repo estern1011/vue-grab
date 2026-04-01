@@ -19,7 +19,7 @@ const chartColor = computed(() => props.trend === 'up' ? '#42b883' : '#e74c3c')
   <Card>
     <CardHeader class="pb-1">
       <div class="flex items-center justify-between">
-        <span class="text-[10px] uppercase tracking-wider text-[#888]">{{ label }}</span>
+        <span class="text-[10px] uppercase tracking-wider text-[#9b9bb2]">{{ label }}</span>
         <Badge variant="secondary" class="text-[9px]">{{ period }}</Badge>
       </div>
     </CardHeader>

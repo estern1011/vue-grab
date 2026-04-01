@@ -18,9 +18,9 @@ function planVariant(plan: string) {
     <DemoAvatar :name="user.name" />
     <div class="flex-1">
       <div class="font-medium text-white">{{ user.name }}</div>
-      <div class="text-[#555]">{{ user.email }}</div>
+      <div class="text-[#8b8ba7]">{{ user.email }}</div>
     </div>
     <Badge :variant="planVariant(user.plan)" class="text-[10px]">{{ user.plan }}</Badge>
-    <span class="w-12 text-right text-[#555]">{{ user.lastActive }}</span>
+    <span class="w-12 text-right text-[#8b8ba7]">{{ user.lastActive }}</span>
   </div>
 </template>

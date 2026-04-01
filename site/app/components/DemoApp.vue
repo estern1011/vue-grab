@@ -19,7 +19,7 @@ const ordersChart = [15, 14, 16, 13, 12, 11, 10, 10]
         <span class="h-2.5 w-2.5 rounded-full bg-[#f39c12]"></span>
         <span class="h-2.5 w-2.5 rounded-full bg-[#2ecc71]"></span>
       </div>
-      <div class="flex-1 rounded-md bg-white/[0.06] px-3 py-1 font-mono text-xs text-[#888]">
+      <div class="flex-1 rounded-md bg-white/[0.06] px-3 py-1 font-mono text-xs text-[#9b9bb2]">
         localhost:3000/dashboard
       </div>
     </div>

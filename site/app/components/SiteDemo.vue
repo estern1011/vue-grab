@@ -24,7 +24,7 @@ defineEmits<{
           {{ grabActive ? 'Stop Grabbing' : 'Start Grabbing' }}
         </button>
 
-        <p class="mx-auto max-w-lg text-center text-sm text-[#888]">
+        <p class="mx-auto max-w-lg text-center text-sm text-[#9b9bb2]">
           <template v-if="!grabActive">
             Click the button above, then click any element in the demo app below.
             These are <strong class="text-[#42b883]">real Vue components</strong>

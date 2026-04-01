@@ -37,8 +37,8 @@ defineEmits<{
       class="vue-grab-embedded-btn fixed left-1/2 top-5 z-[999997] -translate-x-1/2 rounded-lg bg-[#2c3e50] px-4 py-2.5 font-sans shadow-lg"
     >
       <div class="flex items-center gap-2 text-xs text-white">
-        <span class="rounded bg-white/10 px-2 py-0.5 text-[#888]">App</span>
-        <span class="text-[#555]">&rsaquo;</span>
+        <span class="rounded bg-white/10 px-2 py-0.5 text-[#9b9bb2]">App</span>
+        <span class="text-[#8b8ba7]">&rsaquo;</span>
         <span class="rounded bg-[#42b883] px-2 py-0.5 font-semibold">{{ hoveredComponent }}</span>
       </div>
     </div>

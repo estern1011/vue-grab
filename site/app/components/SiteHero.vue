@@ -14,7 +14,7 @@ defineEmits<{
       <div class="mb-10 flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-white">Vue Grab</h1>
-          <p class="mt-1 text-sm text-[#888]">
+          <p class="mt-1 text-sm text-[#9b9bb2]">
             Chrome extension to select Vue component context for your AI coding agent.
           </p>
         </div>
@@ -28,7 +28,7 @@ defineEmits<{
 
       <div id="try-it" class="rounded-xl border border-white/[0.06] bg-[#0d0d1a] p-6">
         <div class="mb-4 flex items-center justify-between">
-          <p class="text-sm text-[#888]">
+          <p class="text-sm text-[#9b9bb2]">
             <template v-if="!grabActive">
               Click components in the demo below to grab their props, state, and stores.
             </template>
