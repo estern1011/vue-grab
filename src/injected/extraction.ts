@@ -236,6 +236,15 @@ function extractSetupState(setupState: Record<string, any>): {
         continue;
       }
 
+      // Skip Vue component definitions (imported child components stored in setupState)
+      if (raw && typeof raw === 'object' && (
+        typeof raw.render === 'function' ||
+        typeof raw.setup === 'function' ||
+        raw.__name || raw.__file
+      )) {
+        continue;
+      }
+
       // Check if it's a computed ref (has .effect and .value)
       if (raw && typeof raw === 'object' && raw.effect && '__v_isRef' in raw) {
         computed.push(key);
