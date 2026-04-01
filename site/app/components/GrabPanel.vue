@@ -18,7 +18,6 @@ const emit = defineEmits<{
 const editors = [
   { key: 'cursor', name: 'Cursor', canSendDirect: true },
   { key: 'windsurf', name: 'Windsurf', canSendDirect: false },
-  { key: 'claude-code', name: 'Claude Code', canSendDirect: false },
 ] as const
 
 const selectedEditor = ref('cursor')
