@@ -38,9 +38,7 @@ function updateComment(id: string, comment: string) {
       @update:comment="updateComment"
     />
 
-    <SiteHero :grab-active="grab.isActive.value" />
-    <SiteAgentBar />
-    <SiteDemo :grab-active="grab.isActive.value" @toggle="grab.toggle()" />
+    <SiteHero :grab-active="grab.isActive.value" @toggle="grab.toggle()" />
     <SiteFeatures />
     <SiteInstall />
     <SiteFooter />
