@@ -15,9 +15,9 @@ const features = [
   <section class="py-16">
     <div class="mx-auto max-w-4xl px-6">
       <h2 class="mb-6 text-lg font-semibold text-white text-pretty">What it grabs</h2>
-      <ul class="grid gap-x-8 gap-y-2 text-sm text-[#9b9bb2] sm:grid-cols-2">
+      <ul class="grid gap-x-8 gap-y-2 text-sm text-dim sm:grid-cols-2">
         <li v-for="f in features" :key="f" class="flex items-start gap-2">
-          <span aria-hidden="true" class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#42b883]" />
+          <span aria-hidden="true" class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
           {{ f }}
         </li>
       </ul>

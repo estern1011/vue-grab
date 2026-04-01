@@ -3,8 +3,6 @@ import { useDashboardStore } from '~/stores/dashboard'
 
 const store = useDashboardStore()
 
-provide('dashboardPeriod', computed(() => store.period))
-
 const revenueChart = [32, 38, 35, 42, 40, 45, 43, 48]
 const usersChart = [20, 22, 21, 25, 24, 26, 27, 28]
 const ordersChart = [15, 14, 16, 13, 12, 11, 10, 10]
@@ -19,7 +17,7 @@ const ordersChart = [15, 14, 16, 13, 12, 11, 10, 10]
         <span class="h-2.5 w-2.5 rounded-full bg-[#f39c12]"></span>
         <span class="h-2.5 w-2.5 rounded-full bg-[#2ecc71]"></span>
       </div>
-      <div class="flex-1 rounded-md bg-white/[0.06] px-3 py-1 font-mono text-xs text-[#9b9bb2]">
+      <div class="flex-1 rounded-md bg-white/[0.06] px-3 py-1 font-mono text-xs text-dim">
         localhost:3000/dashboard
       </div>
     </div>

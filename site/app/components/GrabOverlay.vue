@@ -18,7 +18,7 @@ defineEmits<{
       v-if="isActive"
       aria-live="polite"
       role="status"
-      class="vue-grab-embedded-btn fixed bottom-5 left-5 z-[999997] rounded-lg bg-[#42b883] px-4 py-3 font-sans text-[13px] font-medium text-white shadow-lg"
+      class="vue-grab-embedded-btn fixed bottom-5 left-5 z-[999997] rounded-lg bg-primary px-4 py-3 font-sans text-[13px] font-medium text-white shadow-lg"
     >
       <div class="mb-2 flex items-center gap-2 text-sm font-semibold">
         Vue Grab Active
@@ -48,12 +48,12 @@ defineEmits<{
     >
       <div class="flex items-center gap-1.5 text-xs text-white">
         <template v-for="(name, i) in hierarchy" :key="i">
-          <span v-if="i > 0" class="text-[#8b8ba7]">&rsaquo;</span>
+          <span v-if="i > 0" class="text-subdued">&rsaquo;</span>
           <span
             class="rounded px-2 py-0.5"
             :class="i === hierarchyIndex
-              ? 'bg-[#42b883] font-semibold'
-              : 'bg-white/10 text-[#9b9bb2]'"
+              ? 'bg-primary font-semibold'
+              : 'bg-white/10 text-dim'"
           >{{ name }}</span>
         </template>
       </div>

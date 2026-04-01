@@ -7,7 +7,7 @@ defineProps<{
 
 <template>
   <div class="flex gap-5">
-    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.06] bg-[#16213e] text-sm font-bold text-[#42b883]">
+    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.06] bg-elevated text-sm font-bold text-primary">
       {{ step }}
     </div>
     <div>

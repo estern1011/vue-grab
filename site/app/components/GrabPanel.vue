@@ -84,26 +84,26 @@ function padIndex(idx: number) {
 
 <template>
   <Transition name="panel">
-    <div v-if="isActive" class="vue-grab-embedded-panel fixed right-0 top-0 z-[999998] flex h-screen w-[380px] flex-col border-l border-white/[0.04] bg-[#101020] font-sans text-[13px] text-[#e0e0e0] shadow-2xl">
+    <div v-if="isActive" class="vue-grab-embedded-panel fixed right-0 top-0 z-[999998] flex h-screen w-[380px] flex-col border-l border-border-subtle bg-panel font-sans text-[13px] text-foreground shadow-2xl">
       <!-- Header -->
-      <div class="border-b border-white/[0.06] bg-[#13132a] px-4 py-3">
+      <div class="border-b border-border bg-panel-header px-4 py-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
-            <span class="text-[15px] font-bold text-[#42b883]">Vue Grab</span>
+            <span class="text-[15px] font-bold text-primary">Vue Grab</span>
             <Badge variant="secondary">{{ items.length }} component{{ items.length !== 1 ? 's' : '' }}</Badge>
           </div>
-          <button aria-label="Close panel" class="text-lg text-[#9b9bb2] transition-colors hover:text-white" @click="emit('close')">&times;</button>
+          <button aria-label="Close panel" class="text-lg text-dim transition-colors hover:text-white" @click="emit('close')">&times;</button>
         </div>
         <div class="mt-2.5 flex items-center gap-2">
-          <span class="text-[10px] uppercase tracking-wider text-[#8b8ba7]">Send to</span>
+          <span class="text-[10px] uppercase tracking-wider text-subdued">Send to</span>
           <div class="flex gap-1">
             <button
               v-for="editor in editors"
               :key="editor.key"
               class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
               :class="selectedEditor === editor.key
-                ? 'bg-[#42b883]/15 text-[#42b883]'
-                : 'text-[#8b8ba7] hover:text-[#9b9bb2]'"
+                ? 'bg-primary/15 text-primary'
+                : 'text-subdued hover:text-dim'"
               @click="selectedEditor = editor.key"
             >
               {{ editor.name }}
@@ -114,27 +114,27 @@ function padIndex(idx: number) {
 
       <!-- Items -->
       <div class="flex-1 overflow-y-auto p-2.5">
-        <div v-if="items.length === 0" class="py-12 text-center text-sm text-[#8b8ba7]">
+        <div v-if="items.length === 0" class="py-12 text-center text-sm text-subdued">
           Click any element in the demo to grab its component context.
         </div>
 
         <div
           v-for="(item, idx) in items"
           :key="item.id"
-          class="mb-1.5 overflow-hidden rounded-[10px] border border-white/[0.05] bg-white/[0.025]"
+          class="mb-1.5 overflow-hidden rounded-[10px] border border-border bg-white/[0.025]"
         >
           <!-- Card header -->
-          <div class="flex items-center justify-between border-b border-white/[0.04] px-3.5 py-2.5">
+          <div class="flex items-center justify-between border-b border-border-subtle px-3.5 py-2.5">
             <div class="flex items-center gap-2.5">
-              <span class="font-mono text-[10px] font-bold text-[#42b883]">{{ padIndex(idx) }}</span>
+              <span class="font-mono text-[10px] font-bold text-primary">{{ padIndex(idx) }}</span>
               <span class="text-[13px] font-semibold tracking-tight text-white">{{ item.data.componentName }}</span>
             </div>
-            <button aria-label="Remove component" class="text-sm text-[#8b8ba7] transition-colors hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
+            <button aria-label="Remove component" class="text-sm text-subdued transition-colors hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
           </div>
 
           <!-- Card body -->
           <div class="flex flex-col gap-2 px-3.5 py-2.5">
-            <div v-if="item.data.filePath" class="truncate font-mono text-[10px] text-[#8b8ba7]">
+            <div v-if="item.data.filePath" class="min-w-0 truncate font-mono text-[10px] text-subdued">
               {{ shortPath(item.data.filePath) }}
             </div>
 
@@ -143,10 +143,10 @@ function padIndex(idx: number) {
               :aria-label="`Note for ${item.data.componentName}`"
               :name="`note-${item.id}`"
               autocomplete="off"
-              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] transition-colors placeholder:text-[#8b8ba7]"
+              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-foreground transition-colors placeholder:text-subdued"
               :class="item.comment
-                ? 'border-[#42b883]/[0.12] bg-[#42b883]/[0.04] focus:border-[#42b883]'
-                : 'border-white/[0.06] focus:border-[#42b883]'"
+                ? 'border-primary/[0.12] bg-primary/[0.04] focus:border-primary'
+                : 'border-border focus:border-primary'"
               placeholder="Add a note…"
               :value="item.comment"
               @input="emit('update:comment', item.id, ($event.target as HTMLInputElement).value)"
@@ -154,69 +154,42 @@ function padIndex(idx: number) {
 
             <!-- Props -->
             <div v-if="item.data.props && Object.keys(item.data.props).length">
-              <div class="mb-1 flex items-center gap-1.5 pb-1">
-                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Props</span>
-                <div class="h-px flex-1 bg-white/[0.04]" />
-                <span class="font-mono text-[10px] text-[#8b8ba7]">{{ Object.keys(item.data.props).length }}</span>
-              </div>
-              <div class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
-                <div v-for="(val, key) in item.data.props" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
-                  <span class="text-[#8a7cc8]">{{ key }}</span>
-                  <ValueTree :value="val" :depth="0" class="text-right" />
-                </div>
-              </div>
+              <GrabSectionHeader label="Props" :count="Object.keys(item.data.props).length" />
+              <KeyValueGrid :data="item.data.props" />
             </div>
 
             <!-- State -->
             <div v-if="item.data.state && Object.keys(item.data.state).length">
-              <div class="mb-1 flex items-center gap-1.5 pb-1">
-                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">State</span>
-                <div class="h-px flex-1 bg-white/[0.04]" />
-                <span class="font-mono text-[10px] text-[#8b8ba7]">{{ Object.keys(item.data.state).length }}</span>
-              </div>
-              <div class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
-                <div v-for="(val, key) in item.data.state" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
-                  <span class="text-[#8a7cc8]">{{ key }}</span>
-                  <ValueTree :value="val" :depth="0" class="text-right" />
-                </div>
-              </div>
+              <GrabSectionHeader label="State" :count="Object.keys(item.data.state).length" />
+              <KeyValueGrid :data="item.data.state" />
             </div>
 
             <!-- Store -->
             <div v-if="item.data.storeName">
-              <div class="mb-1 flex items-center gap-1.5 pb-1">
-                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Store</span>
-                <span class="rounded bg-[#42b883]/10 px-1.5 py-px text-[9px] font-medium text-[#42b883]">{{ item.data.storeName }}</span>
-                <div class="h-px flex-1 bg-white/[0.04]" />
-                <span class="font-mono text-[9px] text-[#42b883]/50">pinia</span>
-              </div>
-              <div v-if="item.data.storeState" class="flex flex-col gap-[3px] rounded-md bg-black/20 px-2.5 py-1.5">
-                <div v-for="(val, key) in item.data.storeState" :key="key" class="flex items-baseline justify-between font-mono text-[11px]">
-                  <span class="text-[#8a7cc8]">{{ key }}</span>
-                  <ValueTree :value="val" :depth="0" class="text-right" />
-                </div>
-              </div>
+              <GrabSectionHeader label="Store">
+                <template #after-label>
+                  <span class="rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium text-primary">{{ item.data.storeName }}</span>
+                </template>
+                <template #trailing>
+                  <span class="font-mono text-[9px] text-primary/50">pinia</span>
+                </template>
+              </GrabSectionHeader>
+              <KeyValueGrid v-if="item.data.storeState" :data="item.data.storeState" />
             </div>
 
             <!-- Computed -->
             <div v-if="item.data.computed?.length">
-              <div class="mb-1 flex items-center gap-1.5 pb-1">
-                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Computed</span>
-                <div class="h-px flex-1 bg-white/[0.04]" />
-              </div>
+              <GrabSectionHeader label="Computed" />
               <div class="flex flex-wrap gap-1.5">
-                <span v-for="c in item.data.computed" :key="c" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-[#8888bb]">{{ c }}</span>
+                <span v-for="c in item.data.computed" :key="c" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-code-tag">{{ c }}</span>
               </div>
             </div>
 
             <!-- Methods -->
             <div v-if="item.data.methods?.length">
-              <div class="mb-1 flex items-center gap-1.5 pb-1">
-                <span class="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#8b8ba7]">Methods</span>
-                <div class="h-px flex-1 bg-white/[0.04]" />
-              </div>
+              <GrabSectionHeader label="Methods" />
               <div class="flex flex-wrap gap-1.5">
-                <span v-for="m in item.data.methods" :key="m" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-[#8888bb]">{{ m }}</span>
+                <span v-for="m in item.data.methods" :key="m" class="rounded-[5px] bg-[#c6d0f5]/[0.06] px-2 py-[3px] font-mono text-[10px] text-code-tag">{{ m }}</span>
               </div>
             </div>
           </div>
@@ -224,22 +197,22 @@ function padIndex(idx: number) {
       </div>
 
       <!-- Actions -->
-      <div v-if="items.length > 0" class="flex flex-col gap-2 border-t border-white/[0.06] bg-[#13132a] px-4 py-3">
+      <div v-if="items.length > 0" class="flex flex-col gap-2 border-t border-border bg-panel-header px-4 py-3">
         <button
-          class="w-full rounded-lg bg-gradient-to-br from-[#42b883] to-[#38a576] py-2.5 text-[13px] font-semibold tracking-tight text-white transition-[filter] hover:brightness-110"
+          class="w-full rounded-lg bg-gradient-to-br from-primary to-[#38a576] py-2.5 text-[13px] font-semibold tracking-tight text-white transition-[filter] hover:brightness-110"
           @click="handleSend"
         >
           {{ sendLabel }}
         </button>
         <div class="flex gap-1.5">
           <button
-            class="flex-1 rounded-md bg-white/[0.04] py-[7px] text-xs font-medium text-[#8b8ba7] transition-colors hover:text-white"
+            class="flex-1 rounded-md bg-white/[0.04] py-[7px] text-xs font-medium text-subdued transition-colors hover:text-white"
             @click="emit('copy')"
           >
             Copy to clipboard
           </button>
           <button
-            class="rounded-md bg-white/[0.04] px-4 py-[7px] text-xs font-medium text-[#8b8ba7] transition-colors hover:bg-red-500/10 hover:text-red-400"
+            class="rounded-md bg-white/[0.04] px-4 py-[7px] text-xs font-medium text-subdued transition-colors hover:bg-red-500/10 hover:text-red-400"
             @click="emit('clear')"
           >
             Clear

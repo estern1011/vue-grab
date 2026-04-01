@@ -34,25 +34,25 @@ const summary = computed(() => {
 
 <template>
   <div class="flex flex-wrap items-baseline gap-x-2 font-mono text-[11px]" :class="name ? 'py-0.5' : ''">
-    <span v-if="name" class="shrink-0" :class="typeof Number(name) === 'number' && !isNaN(Number(name)) ? 'text-[#9498b8]' : 'text-[#c4a7e7]'">{{ name }}</span>
+    <span v-if="name" class="shrink-0" :class="Number.isFinite(Number(name)) ? 'text-code-null' : 'text-code-key'">{{ name }}</span>
 
     <!-- Primitives -->
     <template v-if="!isExpandable || d >= maxDepth">
-      <span v-if="value === null" class="italic text-[#9498b8]">null</span>
-      <span v-else-if="value === undefined" class="italic text-[#9498b8]">undefined</span>
-      <span v-else-if="typeof value === 'boolean'" class="text-[#e78284]">{{ value }}</span>
-      <span v-else-if="typeof value === 'number'" class="text-[#ef9f76]">{{ value }}</span>
-      <span v-else-if="typeof value === 'string' && value.startsWith('[')" class="text-[#9498b8]">{{ value }}</span>
-      <span v-else-if="typeof value === 'string'" class="text-[#a6d189]">"{{ value.length > 60 ? value.slice(0, 57) + '…' : value }}"</span>
-      <span v-else-if="d >= maxDepth && isArray" class="text-[#81a1c1]">Array({{ value.length }})</span>
-      <span v-else-if="d >= maxDepth" class="text-[#81a1c1]">{{ summary }}</span>
-      <span v-else class="text-[#9b9bb2]">{{ String(value) }}</span>
+      <span v-if="value === null" class="italic text-code-null">null</span>
+      <span v-else-if="value === undefined" class="italic text-code-null">undefined</span>
+      <span v-else-if="typeof value === 'boolean'" class="text-code-bool">{{ value }}</span>
+      <span v-else-if="typeof value === 'number'" class="text-code-number">{{ value }}</span>
+      <span v-else-if="typeof value === 'string' && value.startsWith('[')" class="text-code-null">{{ value }}</span>
+      <span v-else-if="typeof value === 'string'" class="text-code-string">"{{ value.length > 60 ? value.slice(0, 57) + '…' : value }}"</span>
+      <span v-else-if="d >= maxDepth && isArray" class="text-code-link">Array({{ value.length }})</span>
+      <span v-else-if="d >= maxDepth" class="text-code-link">{{ summary }}</span>
+      <span v-else class="text-dim">{{ String(value) }}</span>
     </template>
 
     <!-- Expandable -->
-    <details v-else class="inline w-full" :class="{ 'w-full': true }">
-      <summary class="inline cursor-pointer text-[#81a1c1] hover:text-[#88c0d0]">
-        <span class="mr-1 inline-block text-[7px] text-[#8b8ba7] transition-transform">&#9654;</span>{{ summary }}
+    <details v-else class="inline w-full">
+      <summary class="inline cursor-pointer text-code-link hover:text-code-link">
+        <span class="mr-1 inline-block text-[7px] text-subdued transition-transform">&#9654;</span>{{ summary }}
       </summary>
       <div class="ml-1 border-l border-white/[0.06] pl-3">
         <ValueTree

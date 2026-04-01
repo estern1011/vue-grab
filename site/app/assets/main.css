@@ -3,26 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --green: #42b883;
-  --bg: #0a0a1a;
-  --bg-card: #111128;
-  --bg-elevated: #16213e;
-  --text: #e0e0e0;
-  --text-dim: #9b9bb2;
-  --text-muted: #8b8ba7;
-  --border: rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: #0a0a1a;
+  color: #e0e0e0;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Global focus-visible ring for interactive elements */
 :focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid #42b883;
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -44,7 +36,7 @@ body {
   left: 16px;
   z-index: 999999;
   padding: 8px 16px;
-  background: var(--green);
+  background: #42b883;
   color: #fff;
   border-radius: 0 0 8px 8px;
   font-size: 14px;
@@ -54,4 +46,10 @@ body {
 
 .skip-link:focus {
   top: 0;
+}
+
+@layer components {
+  .kbd {
+    @apply rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px];
+  }
 }

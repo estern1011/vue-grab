@@ -22,7 +22,7 @@ const sortedOrders = computed(() => {
     <CardHeader class="flex-row items-center justify-between pb-3">
       <span class="text-sm font-semibold text-white">Recent Orders</span>
       <button
-        class="rounded border border-white/10 px-2 py-1 text-[10px] text-[#9b9bb2] transition-colors hover:border-[#42b883] hover:text-[#42b883]"
+        class="rounded border border-white/10 px-2 py-1 text-[10px] text-dim transition-colors hover:border-primary hover:text-primary"
         @click="$emit('toggleSort')"
       >
         {{ sortOrder === 'desc' ? 'Newest first' : 'Oldest first' }}
