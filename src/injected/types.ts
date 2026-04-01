@@ -13,7 +13,8 @@ export type BridgeRequestMessage =
   | { type: 'VUE_GRAB_EXTRACT'; elementId: string }
   | { type: 'VUE_GRAB_EXTRACT_CURRENT' }
   | { type: 'VUE_GRAB_NAVIGATE_PARENT' }
-  | { type: 'VUE_GRAB_NAVIGATE_CHILD' };
+  | { type: 'VUE_GRAB_NAVIGATE_CHILD' }
+  | { type: 'VUE_GRAB_COLLECT_COMPONENTS' };
 
 export interface ComponentInfoPayload {
   name: string;
@@ -24,7 +25,8 @@ export interface ComponentInfoPayload {
 export type BridgeResponseMessage =
   | { type: 'VUE_GRAB_COMPONENT_DATA'; data: any; error?: string | null }
   | { type: 'VUE_GRAB_COMPONENT_INFO'; info: ComponentInfoPayload | null }
-  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfoPayload | null; error?: string | null };
+  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfoPayload | null; error?: string | null }
+  | { type: 'VUE_GRAB_COMPONENTS_LIST'; elementIds: string[] };
 
 // Window augmentations
 declare global {

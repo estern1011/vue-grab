@@ -22,12 +22,14 @@ type BridgeRequestMessage =
   | { type: 'VUE_GRAB_EXTRACT'; elementId: string }
   | { type: 'VUE_GRAB_EXTRACT_CURRENT' }
   | { type: 'VUE_GRAB_NAVIGATE_PARENT' }
-  | { type: 'VUE_GRAB_NAVIGATE_CHILD' };
+  | { type: 'VUE_GRAB_NAVIGATE_CHILD' }
+  | { type: 'VUE_GRAB_COLLECT_COMPONENTS' };
 
 type BridgeResponseMessage =
   | { type: 'VUE_GRAB_COMPONENT_DATA'; data: ComponentData | null; error?: string | null }
   | { type: 'VUE_GRAB_COMPONENT_INFO'; info: ComponentInfo | null }
-  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfo | null; error?: string | null };
+  | { type: 'VUE_GRAB_NAVIGATION_RESULT'; info: ComponentInfo | null; error?: string | null }
+  | { type: 'VUE_GRAB_COMPONENTS_LIST'; elementIds: string[] };
 
 interface BridgeRuntime {
   element: HTMLElement;
@@ -152,6 +154,8 @@ function handleBridgeResponse(event: Event): void {
     } else if (detail.error) {
       // Navigation error — silent
     }
+  } else if (detail.type === 'VUE_GRAB_COMPONENTS_LIST') {
+    handleComponentsList(detail.elementIds);
   }
 }
 
@@ -413,11 +417,22 @@ function extractCurrentComponent(): void {
 // Tab cycling through visible Vue components
 // ============================================================================
 
+let pendingTabDirection: 1 | -1 = 1;
+
 function cycleTabComponents(direction: 1 | -1): void {
-  tabbableElements = collectVisibleVueElements();
+  pendingTabDirection = direction;
+  // Ask the injected script (page context) to find all visible Vue components
+  sendBridgeRequest({ type: 'VUE_GRAB_COLLECT_COMPONENTS' });
+}
+
+function handleComponentsList(elementIds: string[]): void {
+  tabbableElements = elementIds
+    .map(id => document.querySelector(`[data-vue-grab-id="${id}"]`) as HTMLElement)
+    .filter(Boolean);
+
   if (tabbableElements.length === 0) return;
 
-  tabCycleIndex += direction;
+  tabCycleIndex += pendingTabDirection;
   if (tabCycleIndex >= tabbableElements.length) tabCycleIndex = 0;
   if (tabCycleIndex < 0) tabCycleIndex = tabbableElements.length - 1;
 
@@ -426,49 +441,19 @@ function cycleTabComponents(direction: 1 | -1): void {
   // Clear previous hover state
   if (hoveredElement) {
     hoveredElement.classList.remove('vue-grab-highlight');
-    hoveredElement.removeAttribute('data-vue-grab-id');
   }
 
   // Apply highlight to new element
   hoveredElement = el;
   el.classList.add('vue-grab-highlight');
 
-  const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
-  el.setAttribute('data-vue-grab-id', elementId);
+  const elementId = el.getAttribute('data-vue-grab-id')!;
 
-  // Get component info via bridge
+  // Get component info via bridge (updates label, breadcrumb, hierarchy)
   sendBridgeRequest({ type: 'VUE_GRAB_GET_INFO', elementId });
 
   // Scroll into view
   el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-function collectVisibleVueElements(): HTMLElement[] {
-  const results: HTMLElement[] = [];
-  const seen = new WeakSet<any>();
-
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
-  let node: Node | null = walker.currentNode;
-  while (node) {
-    const el = node as HTMLElement;
-    if (el.closest?.('.vue-grab-panel') || el.closest?.('.vue-grab-active-indicator') || el.closest?.('.vue-grab-breadcrumb')) {
-      node = walker.nextNode();
-      continue;
-    }
-    const inst = (el as any).__vueParentComponent;
-    if (inst && !seen.has(inst)) {
-      seen.add(inst);
-      const name = inst.type?.name || inst.type?.__name;
-      if (name) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          results.push(el);
-        }
-      }
-    }
-    node = walker.nextNode();
-  }
-  return results;
 }
 
 // ============================================================================

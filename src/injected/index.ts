@@ -149,6 +149,12 @@ import { extractVueComponent, extractFromInstance } from './extraction';
           error: 'Already at clicked element'
         });
       }
+    } else if (detail.type === 'VUE_GRAB_COLLECT_COMPONENTS') {
+      const elementIds = collectVisibleVueComponents();
+      emitResponse({
+        type: 'VUE_GRAB_COMPONENTS_LIST',
+        elementIds
+      });
     } else if (detail.type === 'VUE_GRAB_EXTRACT_CURRENT') {
       const componentInfo = currentComponentStack[currentStackIndex];
       if (currentStackIndex >= 0 && componentInfo) {
@@ -176,6 +182,39 @@ import { extractVueComponent, extractFromInstance } from './extraction';
       composed: false
     });
     bridgeElement.dispatchEvent(event);
+  }
+
+  function collectVisibleVueComponents(): string[] {
+    const elementIds: string[] = [];
+    const seen = new WeakSet<any>();
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+    let node: Node | null = walker.currentNode;
+    while (node) {
+      const el = node as HTMLElement;
+      if (el.closest?.('.vue-grab-panel') || el.closest?.('.vue-grab-active-indicator') || el.closest?.('.vue-grab-breadcrumb')) {
+        node = walker.nextNode();
+        continue;
+      }
+      const inst = (el as any).__vueParentComponent;
+      if (inst && !seen.has(inst)) {
+        seen.add(inst);
+        const name = inst.type?.name || inst.type?.__name;
+        if (name) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            let id = el.getAttribute('data-vue-grab-id');
+            if (!id) {
+              id = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
+              el.setAttribute('data-vue-grab-id', id);
+            }
+            elementIds.push(id);
+          }
+        }
+      }
+      node = walker.nextNode();
+    }
+    return elementIds;
   }
 
   // Signal that the injected script is ready
