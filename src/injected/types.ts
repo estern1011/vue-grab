@@ -115,6 +115,10 @@ export interface VNode {
   props?: Record<string, any>;
   shapeFlag?: number;
   dynamicChildren?: VNode[];
+  suspense?: {
+    activeBranch?: VNode;
+    pendingBranch?: VNode;
+  };
   // Vue 2 specific
   tag?: string;
   data?: {

@@ -19,6 +19,11 @@ export const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
     name: 'Windsurf',
     scheme: 'windsurf',
     buildUrl: (filePath: string): string => `windsurf://file/${filePath || ''}`
+  },
+  'claude-code': {
+    name: 'Claude Code',
+    scheme: '',
+    buildUrl: (): string => ''
   }
 };
 

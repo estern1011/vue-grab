@@ -111,11 +111,24 @@ export function getVueComponentInfo(element: HTMLElement): { name: string; insta
     }
   }
 
-  // Fallback: use DevTools hook for top-down traversal
-  if (!instance && window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
+  // Also try DevTools hook - it's more reliable for Nuxt/Suspense/fragment components
+  // Use it even when we found an instance, to see if there's a deeper one
+  if (window.__VUE_DEVTOOLS_GLOBAL_HOOK__) {
     const hook = window.__VUE_DEVTOOLS_GLOBAL_HOOK__;
     if (hook.apps && hook.apps.size > 0) {
-      instance = findComponentViaDevtoolsHook(element, hook);
+      const hookInstance = findComponentViaDevtoolsHook(element, hook);
+      if (hookInstance) {
+        if (!instance) {
+          instance = hookInstance;
+        } else {
+          // Prefer the more specific (deeper) component
+          const hookDepth = getComponentDepth(hookInstance);
+          const currentDepth = getComponentDepth(instance);
+          if (hookDepth > currentDepth) {
+            instance = hookInstance;
+          }
+        }
+      }
     }
   }
 
@@ -181,9 +194,38 @@ export function getChildComponents(instance: VueComponentInstance): VueComponent
     // If this vnode has a component instance, add it
     if (vnode.component && !visitedInstances.has(vnode.component)) {
       visitedInstances.add(vnode.component);
-      children.push(vnode.component);
-      // Don't traverse into component's internal tree - we want immediate children only
-      return;
+
+      // For framework wrapper components (NuxtPage, NuxtLayout, RouterView, Suspense,
+      // Transition, KeepAlive), traverse into their subtree to find real components
+      const typeName = vnode.component.type?.name || vnode.component.type?.__name || '';
+      const isWrapper = /^(Nuxt|Router|Suspense|Transition|KeepAlive|BaseTransition|Fragment)/i.test(typeName)
+        || vnode.component.type?.__asyncLoader; // async components
+
+      if (isWrapper && vnode.component.subTree) {
+        collectFromVNode(vnode.component.subTree, depth + 1);
+      } else {
+        children.push(vnode.component);
+        return; // Don't traverse into real component's internal tree
+      }
+    }
+
+    // Traverse Suspense active branch (used by Nuxt pages)
+    if ((vnode as any).suspense) {
+      const suspense = (vnode as any).suspense;
+      if (suspense.activeBranch) {
+        collectFromVNode(suspense.activeBranch, depth + 1);
+      }
+      if (suspense.pendingBranch) {
+        collectFromVNode(suspense.pendingBranch, depth + 1);
+      }
+    }
+
+    // Also check ssContent/ssFallback (Suspense slots in Vue 3 internals)
+    if ((vnode as any).ssContent) {
+      collectFromVNode((vnode as any).ssContent, depth + 1);
+    }
+    if ((vnode as any).ssFallback) {
+      collectFromVNode((vnode as any).ssFallback, depth + 1);
     }
 
     // Traverse children array
@@ -193,8 +235,21 @@ export function getChildComponents(instance: VueComponentInstance): VueComponent
           collectFromVNode(child, depth + 1);
         }
       } else if (typeof vnode.children === 'object') {
-        // Could be a single vnode
-        collectFromVNode(vnode.children, depth + 1);
+        // Could be slots object - try to resolve slot functions
+        const childrenObj = vnode.children as Record<string, any>;
+        for (const key of Object.keys(childrenObj)) {
+          const slot = childrenObj[key];
+          if (typeof slot === 'function') {
+            try {
+              const slotResult = slot();
+              collectFromVNode(slotResult, depth + 1);
+            } catch {
+              // Slot function may require args, skip
+            }
+          } else if (slot && typeof slot === 'object') {
+            collectFromVNode(slot, depth + 1);
+          }
+        }
       }
     }
 
@@ -341,6 +396,19 @@ export function findComponentViaDevtoolsHook(element: HTMLElement, hook: any): V
     console.debug('Vue Grab: Error accessing devtools hook:', e);
   }
   return null;
+}
+
+/**
+ * Get the depth of a component in the component tree (how many parents it has)
+ */
+export function getComponentDepth(instance: VueComponentInstance): number {
+  let depth = 0;
+  let current: VueComponentInstance | undefined = instance;
+  while (current) {
+    current = current.parent || current.$parent;
+    depth++;
+  }
+  return depth;
 }
 
 /**

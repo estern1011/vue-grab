@@ -3,10 +3,13 @@
  *
  * This is the main content script that runs in the extension's isolated world.
  * It handles all UI elements and user interaction.
+ *
+ * Supports multi-select mode: click multiple components, add comments,
+ * preview context, and copy all at once.
  */
 
 import { VUE_GRAB_IDE_CONFIG, VUE_GRAB_CONFIG } from './constants';
-import type { ComponentData, ComponentInfo } from './types';
+import type { ComponentData, ComponentInfo, GrabbedItem } from './types';
 
 interface BridgeHandshake {
   bridgeId: string;
@@ -31,7 +34,6 @@ interface BridgeRuntime {
   config: BridgeHandshake;
 }
 
-// Extend Window interface for our custom properties
 declare global {
   interface Window {
     _vueGrabExtractionTimeout?: number;
@@ -44,16 +46,22 @@ const bridgeRuntime = initializeBridge();
 let isActive = false;
 let hoveredElement: HTMLElement | null = null;
 let activeIndicator: HTMLElement | null = null;
-let lastComponentData: ComponentData | null = null;
 let currentHierarchy: string[] | null = null;
 let currentHierarchyIndex = -1;
 let breadcrumbElement: HTMLElement | null = null;
 let floatingLabel: HTMLElement | null = null;
 let selectedEditor = VUE_GRAB_CONFIG.DEFAULT_EDITOR;
 
+// Multi-select grab list
+let grabbedItems: GrabbedItem[] = [];
+let panelElement: HTMLElement | null = null;
+
 // Throttling state for mouseover events
 let mouseoverThrottleTimer: number | null = null;
 const MOUSEOVER_THROTTLE_MS = 100;
+
+// Track pending action for keyboard shortcuts
+let pendingAction: 'grab' | 'editor' | null = null;
 
 // Load saved editor preference
 if (chrome.storage && chrome.storage.local) {
@@ -74,15 +82,11 @@ function injectPageScript(): void {
   (document.head || document.documentElement).appendChild(script);
 }
 
-// Inject script as soon as possible
 if (document.head || document.documentElement) {
   injectPageScript();
 } else {
   document.addEventListener('DOMContentLoaded', injectPageScript);
 }
-
-// Track pending action for keyboard shortcuts
-let pendingAction: 'copy' | 'editor' | null = null;
 
 if (bridgeRuntime) {
   bridgeRuntime.element.addEventListener(bridgeRuntime.config.responseEvent, handleBridgeResponse as EventListener);
@@ -103,25 +107,24 @@ function handleBridgeResponse(event: Event): void {
 
     const componentData = detail.data;
     if (componentData) {
-      lastComponentData = componentData;
+      // Add to grab list instead of copying immediately
+      const item: GrabbedItem = {
+        id: generateRandomId(),
+        componentData,
+        comment: '',
+        timestamp: Date.now()
+      };
+      grabbedItems.push(item);
+      updatePanel();
+      showToast(`Added ${componentData.componentName} to grab list`, 'success');
 
       if (pendingAction === 'editor') {
-        copyToClipboard(componentData);
         openInEditor(componentData);
-        showToast(`✓ Copied and opening in ${VUE_GRAB_IDE_CONFIG[selectedEditor]?.name}...`, 'success');
-      } else {
-        copyToClipboard(componentData);
-        showToast('✓ Component data copied to clipboard!', 'success');
       }
-
       pendingAction = null;
-      deactivate();
-      isActive = false;
     } else {
       showToast(detail.error || 'No Vue component found', 'error');
       pendingAction = null;
-      deactivate();
-      isActive = false;
     }
   } else if (detail.type === 'VUE_GRAB_COMPONENT_INFO') {
     if (detail.info && hoveredElement) {
@@ -150,9 +153,7 @@ function handleBridgeResponse(event: Event): void {
 
 function initializeBridge(): BridgeRuntime | null {
   const host = document.documentElement || document.body;
-  if (!host) {
-    return null;
-  }
+  if (!host) return null;
 
   const suffix = generateRandomId();
   const handshake: BridgeHandshake = {
@@ -199,7 +200,7 @@ function openInEditor(componentData: ComponentData): void {
   const filePath = componentData?.filePath;
   const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
 
-  if (config && filePath) {
+  if (config && config.scheme && filePath) {
     const url = config.buildUrl(filePath);
     try {
       window.open(url, '_blank');
@@ -219,9 +220,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     }
     sendResponse({ isActive });
   } else if (request.action === 'getState') {
-    sendResponse({ isActive, hasData: lastComponentData !== null });
+    sendResponse({ isActive, hasData: grabbedItems.length > 0 });
   } else if (request.action === 'getLastData') {
-    sendResponse({ data: lastComponentData });
+    const lastItem = grabbedItems[grabbedItems.length - 1];
+    sendResponse({ data: lastItem?.componentData || null });
   } else if (request.action === 'setEditor') {
     selectedEditor = request.editor as string;
     sendResponse({ success: true });
@@ -236,7 +238,8 @@ function activate(): void {
   document.addEventListener('keydown', handleKeyDown);
 
   showActiveIndicator();
-  showToast('Vue Grab activated! Click any element to extract its component.', 'success');
+  showPanel();
+  showToast('Vue Grab activated! Click elements to add them to your grab list.', 'success');
 }
 
 function deactivate(): void {
@@ -245,7 +248,6 @@ function deactivate(): void {
   document.removeEventListener('click', handleClick, true);
   document.removeEventListener('keydown', handleKeyDown);
 
-  // Clear throttle timer
   if (mouseoverThrottleTimer !== null) {
     clearTimeout(mouseoverThrottleTimer);
     mouseoverThrottleTimer = null;
@@ -262,28 +264,24 @@ function deactivate(): void {
   hideActiveIndicator();
   hideBreadcrumb();
   hideFloatingLabel();
+  hidePanel();
 }
 
 function handleMouseOver(e: MouseEvent): void {
   if (!isActive) return;
 
-  // Throttle mouseover events to prevent performance issues
-  if (mouseoverThrottleTimer !== null) {
-    return; // Skip this event, still throttling
-  }
+  // Don't highlight panel elements
+  const target = e.target as HTMLElement;
+  if (target.closest('.vue-grab-panel')) return;
 
-  const targetElement = e.target as HTMLElement;
-  hoveredElement = targetElement;
+  if (mouseoverThrottleTimer !== null) return;
 
+  hoveredElement = target;
   const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
 
-  sendBridgeRequest({
-    type: 'VUE_GRAB_GET_INFO',
-    elementId
-  });
+  sendBridgeRequest({ type: 'VUE_GRAB_GET_INFO', elementId });
 
-  // Set throttle timer
   mouseoverThrottleTimer = window.setTimeout(() => {
     mouseoverThrottleTimer = null;
   }, MOUSEOVER_THROTTLE_MS);
@@ -307,14 +305,19 @@ function handleMouseOut(_e: MouseEvent): void {
 function handleClick(e: MouseEvent): void {
   if (!isActive) return;
 
+  const target = e.target as HTMLElement;
+
+  // Don't intercept clicks on the panel itself
+  if (target.closest('.vue-grab-panel')) return;
+
   e.preventDefault();
   e.stopPropagation();
 
-  triggerExtraction(e.metaKey || e.ctrlKey, e.target as HTMLElement);
+  triggerExtraction(e.metaKey || e.ctrlKey, target);
 }
 
 function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement | null): void {
-  pendingAction = openInEditorMode ? 'editor' : 'copy';
+  pendingAction = openInEditorMode ? 'editor' : 'grab';
 
   if (!hoveredElement && targetElement) {
     hoveredElement = targetElement;
@@ -331,12 +334,8 @@ function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement
   }
 
   const extractionTimeout = window.setTimeout(() => {
-    if (isActive) {
-      showToast('Extraction timed out. Try again.', 'error');
-      pendingAction = null;
-      deactivate();
-      isActive = false;
-    }
+    showToast('Extraction timed out. Try again.', 'error');
+    pendingAction = null;
   }, VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
 
   window._vueGrabExtractionTimeout = extractionTimeout;
@@ -387,10 +386,7 @@ function extractCurrentComponent(): void {
       elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
       hoveredElement.setAttribute('data-vue-grab-id', elementId);
     }
-    sendBridgeRequest({
-      type: 'VUE_GRAB_EXTRACT',
-      elementId
-    });
+    sendBridgeRequest({ type: 'VUE_GRAB_EXTRACT', elementId });
     return;
   }
 
@@ -400,22 +396,415 @@ function extractCurrentComponent(): void {
   }
   showToast('No element selected. Try hovering over a component first.', 'error');
   pendingAction = null;
-  deactivate();
-  isActive = false;
 }
 
-function copyToClipboard(data: ComponentData): void {
-  const formatted = formatForClaudeCCode(data);
+// ============================================================================
+// Panel UI - Context Preview & Grab List
+// ============================================================================
 
+function showPanel(): void {
+  if (panelElement) return;
+
+  panelElement = document.createElement('div');
+  panelElement.className = 'vue-grab-panel';
+  panelElement.innerHTML = buildPanelHTML();
+  document.body.appendChild(panelElement);
+
+  attachPanelListeners();
+}
+
+function hidePanel(): void {
+  if (panelElement) {
+    panelElement.remove();
+    panelElement = null;
+  }
+}
+
+function updatePanel(): void {
+  if (!panelElement) return;
+
+  const listEl = panelElement.querySelector('.vue-grab-panel-list');
+  const countEl = panelElement.querySelector('.vue-grab-panel-count');
+  const actionsEl = panelElement.querySelector('.vue-grab-panel-actions');
+
+  if (listEl) listEl.innerHTML = buildItemsHTML();
+  if (countEl) countEl.textContent = `${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''}`;
+  if (actionsEl) (actionsEl as HTMLElement).style.display = grabbedItems.length > 0 ? 'flex' : 'none';
+
+  attachItemListeners();
+}
+
+function buildPanelHTML(): string {
+  return `
+    <div class="vue-grab-panel-header">
+      <div class="vue-grab-panel-title">
+        <span class="vue-grab-panel-logo">Vue Grab</span>
+        <span class="vue-grab-panel-count">${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''}</span>
+      </div>
+      <button class="vue-grab-panel-close" title="Close (Esc)">&times;</button>
+    </div>
+    <div class="vue-grab-panel-list">
+      ${buildItemsHTML()}
+    </div>
+    <div class="vue-grab-panel-actions" style="display: ${grabbedItems.length > 0 ? 'flex' : 'none'}">
+      <button class="vue-grab-panel-copy-all">Copy All</button>
+      <button class="vue-grab-panel-clear">Clear</button>
+    </div>
+    <div class="vue-grab-panel-empty" style="display: ${grabbedItems.length === 0 ? 'block' : 'none'}">
+      Click any element on the page to grab its Vue component context.
+    </div>
+  `;
+}
+
+function buildItemsHTML(): string {
+  if (grabbedItems.length === 0) return '';
+
+  return grabbedItems.map((item, index) => {
+    const data = item.componentData;
+
+    return `
+      <div class="vue-grab-panel-item" data-item-id="${item.id}">
+        <div class="vue-grab-panel-item-header">
+          <div class="vue-grab-panel-item-info">
+            <span class="vue-grab-panel-item-number">${index + 1}</span>
+            <span class="vue-grab-panel-item-name">${escapeHtml(data.componentName)}</span>
+          </div>
+          <button class="vue-grab-panel-item-remove" data-item-id="${item.id}" title="Remove">&times;</button>
+        </div>
+        ${data.filePath ? `<div class="vue-grab-panel-item-file">${escapeHtml(data.filePath)}</div>` : ''}
+        <div class="vue-grab-panel-item-comment-row">
+          <input
+            type="text"
+            class="vue-grab-panel-item-comment"
+            data-item-id="${item.id}"
+            placeholder="Add a note for the agent..."
+            value="${escapeHtml(item.comment)}"
+          />
+        </div>
+        <div class="vue-grab-context">
+          ${buildContextSections(data)}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function buildContextSections(data: ComponentData): string {
+  let html = '';
+
+  // Element info
+  if (data.element) {
+    const el = data.element;
+    const tag = `&lt;${escapeHtml(el.tagName)}&gt;`;
+    const parts = [tag];
+    if (el.id) parts.push(`#${escapeHtml(el.id)}`);
+    if (el.classes?.length) parts.push(el.classes.map(c => `.${escapeHtml(c)}`).join(''));
+    html += `<div class="vue-grab-ctx-element">${parts.join('')}</div>`;
+  }
+
+  // Props
+  html += buildObjectSection('Props', data.props);
+
+  // State
+  const state = data.data || data.setupState;
+  html += buildObjectSection('State', state);
+
+  // Computed
+  if (data.computed?.length) {
+    html += buildListSection('Computed', data.computed);
+  }
+
+  // Methods
+  if (data.methods?.length) {
+    html += buildListSection('Methods', data.methods);
+  }
+
+  // Pinia Stores
+  if (data.piniaStores?.length) {
+    const used = data.piniaStores.filter(s => s.usedByComponent === 'definitely');
+    const other = data.piniaStores.filter(s => s.usedByComponent !== 'definitely');
+    if (used.length) {
+      for (const store of used) {
+        html += buildStoreSection(store.id, store.state, store.getters, store.actions, true);
+      }
+    }
+    if (other.length) {
+      html += `<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">${other.length} other store${other.length !== 1 ? 's' : ''}</summary>
+        <div class="vue-grab-ctx-tags">${other.map(s => `<span class="vue-grab-ctx-tag">${escapeHtml(s.id)}</span>`).join('')}</div>
+      </details>`;
+    }
+  }
+
+  // Vuex Store
+  if (data.vuexStore) {
+    html += buildObjectSection('Vuex State', data.vuexStore.state);
+    if (data.vuexStore.usedState.length) {
+      html += buildListSection('Used State', data.vuexStore.usedState);
+    }
+  }
+
+  // TanStack Query
+  if (data.tanstackQueries?.length) {
+    for (const q of data.tanstackQueries.filter(q => q.usedByComponent === 'definitely')) {
+      const label = `Query ${JSON.stringify(q.queryKey)}`;
+      const badge = q.state.status;
+      html += `<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">${escapeHtml(label)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--${badge}">${badge}</span></summary>
+        ${renderValue(q.data)}
+      </details>`;
+    }
+  }
+
+  // Router
+  if (data.routerState) {
+    const r = data.routerState;
+    html += `<details class="vue-grab-ctx-section">
+      <summary class="vue-grab-ctx-label">Route</summary>
+      <div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key">path</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(r.fullPath)}</span>
+      </div>
+      ${r.name ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">name</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(String(r.name))}</span></div>` : ''}
+      ${Object.keys(r.params || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">params</span>${renderValue(r.params)}</div>` : ''}
+      ${Object.keys(r.query || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">query</span>${renderValue(r.query)}</div>` : ''}
+    </details>`;
+  }
+
+  // Emitted Events
+  if (data.emittedEvents?.length) {
+    html += buildListSection('Emits', data.emittedEvents);
+  }
+
+  // Provide/Inject
+  if (data.providedValues && Object.keys(data.providedValues).length) {
+    html += buildObjectSection('Provides', data.providedValues);
+  }
+  if (data.injectedValues && Object.keys(data.injectedValues).length) {
+    html += buildObjectSection('Injects', data.injectedValues);
+  }
+
+  // Slots
+  if (data.slots && Object.keys(data.slots).length) {
+    html += buildListSection('Slots', Object.keys(data.slots));
+  }
+
+  // Template
+  if (data.template) {
+    html += `<details class="vue-grab-ctx-section">
+      <summary class="vue-grab-ctx-label">Template</summary>
+      <pre class="vue-grab-ctx-code">${escapeHtml(data.template)}</pre>
+    </details>`;
+  }
+
+  return html || '<div class="vue-grab-ctx-empty">No data extracted</div>';
+}
+
+function buildObjectSection(label: string, obj: Record<string, any> | null): string {
+  if (!obj || Object.keys(obj).length === 0) return '';
+
+  const keys = Object.keys(obj);
+  const previewCount = 4;
+  const hasMore = keys.length > previewCount;
+
+  let inner = '';
+  const visibleKeys = hasMore ? keys.slice(0, previewCount) : keys;
+  for (const key of visibleKeys) {
+    inner += `<div class="vue-grab-ctx-kv">
+      <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(obj[key])}
+    </div>`;
+  }
+  if (hasMore) {
+    inner += `<div class="vue-grab-ctx-more">+${keys.length - previewCount} more</div>`;
+  }
+
+  return `<details class="vue-grab-ctx-section" open>
+    <summary class="vue-grab-ctx-label">${escapeHtml(label)} <span class="vue-grab-ctx-count">${keys.length}</span></summary>
+    ${inner}
+  </details>`;
+}
+
+function buildListSection(label: string, items: string[]): string {
+  return `<details class="vue-grab-ctx-section" open>
+    <summary class="vue-grab-ctx-label">${escapeHtml(label)} <span class="vue-grab-ctx-count">${items.length}</span></summary>
+    <div class="vue-grab-ctx-tags">${items.map(i => `<span class="vue-grab-ctx-tag">${escapeHtml(i)}</span>`).join('')}</div>
+  </details>`;
+}
+
+function buildStoreSection(id: string, state: Record<string, any>, getters: Record<string, any>, actions: string[], used: boolean): string {
+  let inner = '';
+
+  const stateKeys = Object.keys(state || {});
+  if (stateKeys.length) {
+    for (const key of stateKeys.slice(0, 3)) {
+      inner += `<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(state[key])}
+      </div>`;
+    }
+    if (stateKeys.length > 3) {
+      inner += `<div class="vue-grab-ctx-more">+${stateKeys.length - 3} more state</div>`;
+    }
+  }
+
+  const getterKeys = Object.keys(getters || {});
+  if (getterKeys.length) {
+    inner += `<div class="vue-grab-ctx-sub">Getters: ${getterKeys.map(g => `<span class="vue-grab-ctx-tag">${escapeHtml(g)}</span>`).join('')}</div>`;
+  }
+
+  if (actions.length) {
+    inner += `<div class="vue-grab-ctx-sub">Actions: ${actions.map(a => `<span class="vue-grab-ctx-tag">${escapeHtml(a)}</span>`).join('')}</div>`;
+  }
+
+  return `<details class="vue-grab-ctx-section" ${used ? 'open' : ''}>
+    <summary class="vue-grab-ctx-label">Store: ${escapeHtml(id)} ${used ? '<span class="vue-grab-ctx-badge vue-grab-ctx-badge--success">used</span>' : ''}</summary>
+    ${inner}
+  </details>`;
+}
+
+function renderValue(val: any): string {
+  if (val === null || val === undefined) {
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--null">${val === null ? 'null' : 'undefined'}</span>`;
+  }
+  if (typeof val === 'boolean') {
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--bool">${val}</span>`;
+  }
+  if (typeof val === 'number') {
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--num">${val}</span>`;
+  }
+  if (typeof val === 'string') {
+    if (val.startsWith('[Function') || val.startsWith('[Circular') || val.startsWith('[Deep') || val.startsWith('[HTML')) {
+      return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">${escapeHtml(val)}</span>`;
+    }
+    const display = val.length > 60 ? val.slice(0, 57) + '...' : val;
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--string">"${escapeHtml(display)}"</span>`;
+  }
+  if (Array.isArray(val)) {
+    if (val.length === 0) return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">[]</span>`;
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">Array(${val.length})</span>`;
+  }
+  if (typeof val === 'object') {
+    const keys = Object.keys(val);
+    if (keys.length === 0) return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{}</span>`;
+    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? ', ...' : ''}}</span>`;
+  }
+  return `<span class="vue-grab-ctx-val">${escapeHtml(String(val))}</span>`;
+}
+
+function attachPanelListeners(): void {
+  if (!panelElement) return;
+
+  const closeBtn = panelElement.querySelector('.vue-grab-panel-close');
+  closeBtn?.addEventListener('click', () => {
+    deactivate();
+    isActive = false;
+  });
+
+  const copyAllBtn = panelElement.querySelector('.vue-grab-panel-copy-all');
+  copyAllBtn?.addEventListener('click', handleCopyAll);
+
+  const clearBtn = panelElement.querySelector('.vue-grab-panel-clear');
+  clearBtn?.addEventListener('click', () => {
+    grabbedItems = [];
+    updatePanel();
+    const emptyEl = panelElement?.querySelector('.vue-grab-panel-empty') as HTMLElement | null;
+    if (emptyEl) emptyEl.style.display = 'block';
+  });
+
+  attachItemListeners();
+}
+
+function attachItemListeners(): void {
+  if (!panelElement) return;
+
+  // Remove buttons
+  panelElement.querySelectorAll('.vue-grab-panel-item-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const itemId = (e.currentTarget as HTMLElement).dataset.itemId;
+      grabbedItems = grabbedItems.filter(item => item.id !== itemId);
+      updatePanel();
+      if (grabbedItems.length === 0) {
+        const emptyEl = panelElement?.querySelector('.vue-grab-panel-empty') as HTMLElement | null;
+        if (emptyEl) emptyEl.style.display = 'block';
+      }
+    });
+  });
+
+  // Comment inputs
+  panelElement.querySelectorAll('.vue-grab-panel-item-comment').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+      const itemId = target.dataset.itemId;
+      const item = grabbedItems.find(i => i.id === itemId);
+      if (item) item.comment = target.value;
+    });
+
+    // Prevent keydown from propagating (so typing doesn't trigger grab shortcuts)
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+    });
+  });
+
+  // Hide empty message when items exist
+  const emptyEl = panelElement?.querySelector('.vue-grab-panel-empty') as HTMLElement | null;
+  if (emptyEl) emptyEl.style.display = grabbedItems.length === 0 ? 'block' : 'none';
+}
+
+function handleCopyAll(): void {
+  if (grabbedItems.length === 0) {
+    showToast('No components grabbed yet.', 'error');
+    return;
+  }
+
+  const formatted = formatAllGrabbedItems();
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(formatted).catch(err => {
+    navigator.clipboard.writeText(formatted).then(() => {
+      showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
+    }).catch(err => {
       console.error('Could not copy to clipboard:', err);
       fallbackCopy(formatted);
+      showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
     });
   } else {
     fallbackCopy(formatted);
+    showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
   }
 }
+
+function formatAllGrabbedItems(): string {
+  if (grabbedItems.length === 1) {
+    const item = grabbedItems[0];
+    let output = '';
+    if (item.comment) {
+      output += `> **Note:** ${item.comment}\n\n`;
+    }
+    output += formatForClaudeCCode(item.componentData);
+    return output;
+  }
+
+  let output = `# Vue Component Context (${grabbedItems.length} components)\n\n`;
+
+  grabbedItems.forEach((item, index) => {
+    output += `---\n\n`;
+    output += `## ${index + 1}. ${item.componentData.componentName}`;
+    if (item.componentData.filePath) {
+      output += ` (${item.componentData.filePath})`;
+    }
+    output += `\n\n`;
+
+    if (item.comment) {
+      output += `> **Note:** ${item.comment}\n\n`;
+    }
+
+    output += formatSingleComponent(item.componentData);
+    output += `\n`;
+  });
+
+  output += `---\n*Generated by Vue Grab - ${grabbedItems.length} components*\n`;
+  return output;
+}
+
+// ============================================================================
+// Clipboard & Formatting
+// ============================================================================
 
 function fallbackCopy(text: string): void {
   const textarea = document.createElement('textarea');
@@ -429,198 +818,149 @@ function fallbackCopy(text: string): void {
 }
 
 function formatForClaudeCCode(data: ComponentData): string {
+  let output = `# Vue Component Context\n\n`;
+  output += formatSingleComponent(data);
+  output += `\n---\n*Generated by Vue Grab*\n`;
+  return output;
+}
+
+function formatSingleComponent(data: ComponentData): string {
   const elementInfo = data.element
-    ? `## Element
-- **Tag**: <${data.element.tagName}>
-- **ID**: ${data.element.id || 'None'}
-- **Classes**: ${data.element.classes?.join(', ') || 'None'}
-`
+    ? `### Element\n- **Tag**: <${data.element.tagName}>\n- **ID**: ${data.element.id || 'None'}\n- **Classes**: ${data.element.classes?.join(', ') || 'None'}\n\n`
     : '';
 
-  let output = `# Vue Component Context
+  let output = `### Component Information\n- **Name**: ${data.componentName}\n- **File**: ${data.filePath || 'Unknown'}\n\n`;
+  output += elementInfo;
 
-## Component Information
-- **Name**: ${data.componentName}
-- **File**: ${data.filePath || 'Unknown'}
+  output += `### Props\n\`\`\`json\n${JSON.stringify(data.props, null, 2)}\n\`\`\`\n\n`;
+  output += `### Data/State\n\`\`\`json\n${JSON.stringify(data.data || data.setupState, null, 2)}\n\`\`\`\n\n`;
+  output += `### Computed Properties\n${data.computed?.length ? data.computed.join(', ') : 'None'}\n\n`;
+  output += `### Methods\n${data.methods?.length ? data.methods.join(', ') : 'None'}\n`;
 
-${elementInfo}## Props
-\`\`\`json
-${JSON.stringify(data.props, null, 2)}
-\`\`\`
-
-## Data/State
-\`\`\`json
-${JSON.stringify(data.data || data.setupState, null, 2)}
-\`\`\`
-
-## Computed Properties
-${data.computed?.length ? data.computed.join(', ') : 'None'}
-
-## Methods
-${data.methods?.length ? data.methods.join(', ') : 'None'}
-`;
-
-  // Add Pinia Stores section
   if (data.piniaStores && data.piniaStores.length > 0) {
-    output += `\n## Pinia Stores\n\n`;
-
+    output += `\n### Pinia Stores\n\n`;
     const definitelyUsed = data.piniaStores.filter(s => s.usedByComponent === 'definitely');
     const potentiallyUsed = data.piniaStores.filter(s => s.usedByComponent === 'potentially');
     const unknown = data.piniaStores.filter(s => s.usedByComponent === 'unknown');
 
     if (definitelyUsed.length > 0) {
-      output += `### Definitely Used by Component\n\n`;
+      output += `#### Definitely Used by Component\n\n`;
       definitelyUsed.forEach(store => {
-        output += `#### Store: ${store.id}\n\n`;
+        output += `**Store: ${store.id}**\n\n`;
         output += `**State:**\n\`\`\`json\n${JSON.stringify(store.state, null, 2)}\n\`\`\`\n\n`;
-
         if (Object.keys(store.getters).length > 0) {
           output += `**Getters:**\n\`\`\`json\n${JSON.stringify(store.getters, null, 2)}\n\`\`\`\n\n`;
         }
-
         if (store.actions.length > 0) {
           output += `**Actions:** ${store.actions.join(', ')}\n\n`;
         }
       });
     }
-
     if (potentiallyUsed.length > 0) {
-      output += `### Potentially Related Stores\n\n`;
+      output += `#### Potentially Related Stores\n\n`;
       potentiallyUsed.forEach(store => {
         output += `- **${store.id}**: ${store.actions.length} actions, ${Object.keys(store.getters).length} getters\n`;
       });
       output += `\n`;
     }
-
     if (unknown.length > 0) {
-      output += `### Other Available Stores\n`;
-      output += `${unknown.map(s => s.id).join(', ')}\n\n`;
+      output += `#### Other Available Stores\n${unknown.map(s => s.id).join(', ')}\n\n`;
     }
   }
 
-  // Add Vuex Store section
   if (data.vuexStore) {
-    output += `\n## Vuex Store\n\n`;
+    output += `\n### Vuex Store\n\n`;
     output += `**Full State:**\n\`\`\`json\n${JSON.stringify(data.vuexStore.state, null, 2)}\n\`\`\`\n\n`;
-
     if (data.vuexStore.usedState.length > 0) {
       output += `**State Used by Component:** ${data.vuexStore.usedState.join(', ')}\n\n`;
     }
-
     if (Object.keys(data.vuexStore.getters).length > 0) {
       output += `**Getters:**\n\`\`\`json\n${JSON.stringify(data.vuexStore.getters, null, 2)}\n\`\`\`\n\n`;
-
       if (data.vuexStore.usedGetters.length > 0) {
         output += `**Getters Used by Component:** ${data.vuexStore.usedGetters.join(', ')}\n\n`;
       }
     }
-
     if (data.vuexStore.mutations.length > 0) {
       output += `**Available Mutations:** ${data.vuexStore.mutations.join(', ')}\n\n`;
     }
-
     if (data.vuexStore.actions.length > 0) {
       output += `**Available Actions:** ${data.vuexStore.actions.join(', ')}\n\n`;
     }
-
     if (data.vuexStore.modules.length > 0) {
       output += `**Modules:** ${data.vuexStore.modules.join(', ')}\n\n`;
     }
-
     if (data.vuexStore.likelyUsesMappedHelpers) {
       output += `*Note: Component appears to use mapState/mapGetters helpers*\n\n`;
     }
   }
 
-  // Add TanStack Query section
   if (data.tanstackQueries && data.tanstackQueries.length > 0) {
-    output += `\n## TanStack Query (Vue Query)\n\n`;
-
+    output += `\n### TanStack Query (Vue Query)\n\n`;
     const definitelyUsed = data.tanstackQueries.filter(q => q.usedByComponent === 'definitely');
     const potentiallyUsed = data.tanstackQueries.filter(q => q.usedByComponent === 'potentially');
     const unknown = data.tanstackQueries.filter(q => q.usedByComponent === 'unknown');
 
     if (definitelyUsed.length > 0) {
-      output += `### Definitely Used by Component\n\n`;
+      output += `#### Definitely Used by Component\n\n`;
       definitelyUsed.forEach(query => {
-        output += `#### Query: ${JSON.stringify(query.queryKey)}\n\n`;
+        output += `**Query: ${JSON.stringify(query.queryKey)}**\n\n`;
         output += `- **Status:** ${query.state.status}\n`;
         output += `- **Fetch Status:** ${query.state.fetchStatus}\n`;
         output += `- **Last Updated:** ${query.lastUpdated || 'Never'}\n`;
         output += `- **Data Updates:** ${query.state.dataUpdateCount}\n`;
-
-        if (query.error) {
-          output += `- **Error:** ${query.error}\n`;
-        }
-
+        if (query.error) output += `- **Error:** ${query.error}\n`;
         output += `\n**Data:**\n\`\`\`json\n${JSON.stringify(query.data, null, 2)}\n\`\`\`\n\n`;
       });
     }
-
     if (potentiallyUsed.length > 0) {
-      output += `### Potentially Related Queries\n\n`;
+      output += `#### Potentially Related Queries\n\n`;
       potentiallyUsed.forEach(query => {
         output += `- **${JSON.stringify(query.queryKey)}**: ${query.state.status}\n`;
       });
       output += `\n`;
     }
-
     if (unknown.length > 0) {
-      output += `### Other Active Queries\n`;
-      output += `${unknown.map(q => JSON.stringify(q.queryKey)).join(', ')}\n\n`;
+      output += `#### Other Active Queries\n${unknown.map(q => JSON.stringify(q.queryKey)).join(', ')}\n\n`;
     }
   }
 
-  // Add Vue Router section
   if (data.routerState) {
-    output += `\n## Vue Router State\n\n`;
+    output += `\n### Vue Router State\n\n`;
     output += `- **Path:** ${data.routerState.path}\n`;
-    if (data.routerState.name) {
-      output += `- **Route Name:** ${data.routerState.name}\n`;
-    }
+    if (data.routerState.name) output += `- **Route Name:** ${data.routerState.name}\n`;
     output += `- **Full Path:** ${data.routerState.fullPath}\n`;
-
     if (data.routerState.params && Object.keys(data.routerState.params).length > 0) {
       output += `\n**Params:**\n\`\`\`json\n${JSON.stringify(data.routerState.params, null, 2)}\n\`\`\`\n`;
     }
-
     if (data.routerState.query && Object.keys(data.routerState.query).length > 0) {
       output += `\n**Query:**\n\`\`\`json\n${JSON.stringify(data.routerState.query, null, 2)}\n\`\`\`\n`;
     }
-
     if (data.routerState.meta && Object.keys(data.routerState.meta).length > 0) {
       output += `\n**Meta:**\n\`\`\`json\n${JSON.stringify(data.routerState.meta, null, 2)}\n\`\`\`\n`;
     }
-
     if (data.routerState.matched && data.routerState.matched.length > 0) {
-      output += `\n**Matched Routes:** ${data.routerState.matched.map(m => m.name || m.path).join(' → ')}\n`;
+      output += `\n**Matched Routes:** ${data.routerState.matched.map(m => m.name || m.path).join(' > ')}\n`;
     }
   }
 
-  // Add Emitted Events section
   if (data.emittedEvents && data.emittedEvents.length > 0) {
-    output += `\n## Emitted Events\n`;
-    output += `${data.emittedEvents.join(', ')}\n`;
+    output += `\n### Emitted Events\n${data.emittedEvents.join(', ')}\n`;
   }
 
-  // Add Provide/Inject section
   if (data.providedValues || data.injectedValues) {
-    output += `\n## Provide/Inject\n\n`;
-
+    output += `\n### Provide/Inject\n\n`;
     if (data.providedValues && Object.keys(data.providedValues).length > 0) {
       output += `**Provided by this component:**\n\`\`\`json\n${JSON.stringify(data.providedValues, null, 2)}\n\`\`\`\n\n`;
     }
-
     if (data.injectedValues && Object.keys(data.injectedValues).length > 0) {
       output += `**Injected into this component:**\n\`\`\`json\n${JSON.stringify(data.injectedValues, null, 2)}\n\`\`\`\n`;
     }
   }
 
-  // Add Slots section
   if (data.slots && Object.keys(data.slots).length > 0) {
-    output += `\n## Slots\n\n`;
+    output += `\n### Slots\n\n`;
     for (const [slotName, slotContent] of Object.entries(data.slots)) {
-      output += `### ${slotName === 'default' ? 'Default Slot' : `Slot: ${slotName}`}\n`;
+      output += `#### ${slotName === 'default' ? 'Default Slot' : `Slot: ${slotName}`}\n`;
       if (typeof slotContent === 'string') {
         output += `${slotContent}\n\n`;
       } else {
@@ -629,21 +969,22 @@ ${data.methods?.length ? data.methods.join(', ') : 'None'}
     }
   }
 
-  // Add template section
   if (data.template) {
-    output += `\n## Template
-\`\`\`vue
-${data.template}
-\`\`\`
-`;
+    output += `\n### Template\n\`\`\`vue\n${data.template}\n\`\`\`\n`;
   }
-
-  output += `\n---
-*Generated by Vue Grab*
-`;
 
   return output;
 }
+
+function escapeHtml(str: string): string {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============================================================================
+// UI Elements
+// ============================================================================
 
 function showToast(message: string, type: 'success' | 'error' = 'success'): void {
   const toast = document.createElement('div');
@@ -663,10 +1004,9 @@ function showActiveIndicator(): void {
   activeIndicator.innerHTML = `
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
-      <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Copy</span>
-      <span class="shortcut"><kbd>⌘+Click</kbd>/<kbd>⌘+Enter</kbd> + Editor</span>
+      <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Add to list</span>
       <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
-      <span class="shortcut"><kbd>Esc</kbd> Cancel</span>
+      <span class="shortcut"><kbd>Esc</kbd> Done</span>
     </div>
   `;
   document.body.appendChild(activeIndicator);
@@ -696,13 +1036,12 @@ function updateBreadcrumb(): void {
     const classes = ['vue-grab-breadcrumb-item'];
     if (isActive) classes.push('active');
     if (index < currentHierarchyIndex) classes.push('parent');
-
     return `<span class="${classes.join(' ')}">${name}</span>`;
   });
 
   breadcrumbElement.innerHTML = `
-    <div class="vue-grab-breadcrumb-path">${items.join(' → ')}</div>
-    <div class="vue-grab-breadcrumb-hint">⌥↑/↓ to navigate</div>
+    <div class="vue-grab-breadcrumb-path">${items.join(' > ')}</div>
+    <div class="vue-grab-breadcrumb-hint">Alt+Up/Down to navigate</div>
   `;
 }
 
@@ -715,7 +1054,6 @@ function hideBreadcrumb(): void {
 
 function showFloatingLabel(element: HTMLElement, componentName: string): void {
   hideFloatingLabel();
-
   if (!element || !componentName) return;
 
   floatingLabel = document.createElement('div');
@@ -738,7 +1076,6 @@ function positionFloatingLabel(element: HTMLElement): void {
   if (top < window.scrollY + 4) {
     top = rect.bottom + window.scrollY + 4;
   }
-
   if (left + labelRect.width > window.innerWidth - 4) {
     left = window.innerWidth - labelRect.width - 4;
   }

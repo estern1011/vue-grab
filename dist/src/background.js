@@ -1,0 +1,2 @@
+(function(){"use strict";chrome.commands.onCommand.addListener(r=>{r==="toggle-grab"&&chrome.tabs.query({active:!0,currentWindow:!0},e=>{const t=e[0];t?.id&&(t.url&&(t.url.startsWith("chrome://")||t.url.startsWith("chrome-extension://")||t.url.startsWith("about:")||t.url.startsWith("edge://")||t.url.startsWith("devtools://"))||chrome.tabs.sendMessage(t.id,{action:"toggle"}))})})})();
+//# sourceMappingURL=background.js.map

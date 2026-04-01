@@ -164,6 +164,20 @@ export interface ComponentData {
 }
 
 // ============================================================================
+// Grab List Types
+// ============================================================================
+
+/**
+ * A grabbed component with optional user comment
+ */
+export interface GrabbedItem {
+  id: string;
+  componentData: ComponentData;
+  comment: string;
+  timestamp: number;
+}
+
+// ============================================================================
 // Component Hierarchy Types
 // ============================================================================
 
