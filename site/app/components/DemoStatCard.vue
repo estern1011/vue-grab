@@ -24,8 +24,8 @@ const chartColor = computed(() => props.trend === 'up' ? '#42b883' : '#e74c3c')
       </div>
     </CardHeader>
     <CardContent>
-      <div class="text-2xl font-bold text-white">{{ value }}</div>
-      <div class="mt-0.5 text-xs font-medium" :class="trendColor">
+      <div class="text-2xl font-bold tabular-nums text-white">{{ value }}</div>
+      <div class="mt-0.5 text-xs font-medium tabular-nums" :class="trendColor">
         {{ trend === 'up' ? '+' : '' }}{{ change }}%
       </div>
       <div class="mt-2 h-8 opacity-60">

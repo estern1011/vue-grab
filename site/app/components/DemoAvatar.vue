@@ -15,6 +15,8 @@ const color = computed(() => {
 
 <template>
   <div
+    role="img"
+    :aria-label="name"
     class="flex items-center justify-center rounded-full font-bold text-white"
     :class="size === 'sm' ? 'h-6 w-6 text-[9px]' : 'h-8 w-8 text-[10px]'"
     :style="{ background: `${color}25`, color }"

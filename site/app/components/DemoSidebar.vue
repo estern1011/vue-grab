@@ -21,7 +21,7 @@ const navItems = [
       <button
         v-for="item in navItems"
         :key="item.key"
-        class="rounded-md px-3 py-2 text-left text-[13px] transition"
+        class="rounded-md px-3 py-2 text-left text-[13px] transition-colors"
         :class="activeTab === item.key
           ? 'bg-[#42b883]/10 font-medium text-[#42b883]'
           : 'text-[#9b9bb2] hover:bg-white/[0.03]'"

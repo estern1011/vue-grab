@@ -18,7 +18,7 @@ const points = computed(() => {
 </script>
 
 <template>
-  <svg :viewBox="`0 0 100 ${h}`" class="w-full" preserveAspectRatio="none">
+  <svg :viewBox="`0 0 100 ${h}`" class="w-full" preserveAspectRatio="none" aria-hidden="true" role="img">
     <polyline
       :points="points"
       fill="none"

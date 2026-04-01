@@ -14,7 +14,7 @@ defineEmits<{
     <button
       v-for="opt in options"
       :key="opt"
-      class="rounded-md px-2.5 py-1 text-[11px] font-medium transition"
+      class="rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors"
       :class="selected === opt
         ? 'bg-[#42b883]/15 text-[#42b883]'
         : 'text-[#8b8ba7] hover:text-[#9b9bb2]'"

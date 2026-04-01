@@ -1,7 +1,7 @@
 <template>
   <section class="py-20">
     <div class="mx-auto max-w-2xl px-6">
-      <h2 class="mb-12 text-center text-3xl font-bold tracking-tight text-white sm:text-4xl">Get started</h2>
+      <h2 class="mb-12 text-center text-3xl font-bold tracking-tight text-white text-balance sm:text-4xl">Get started</h2>
       <div class="flex flex-col gap-8">
         <SiteInstallStep :step="1" title="Clone & build">
           <div class="flex flex-col gap-1 rounded-lg border border-white/[0.06] bg-[#111128] px-4 py-3">

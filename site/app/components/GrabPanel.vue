@@ -60,7 +60,7 @@ function buildCondensedContext(): string {
   }
 
   let result = parts.join('\n')
-  if (result.length > 7000) result = result.slice(0, 6997) + '...'
+  if (result.length > 7000) result = result.slice(0, 6997) + '…'
   return result
 }
 
@@ -92,7 +92,7 @@ function padIndex(idx: number) {
             <span class="text-[15px] font-bold text-[#42b883]">Vue Grab</span>
             <Badge variant="secondary">{{ items.length }} component{{ items.length !== 1 ? 's' : '' }}</Badge>
           </div>
-          <button class="text-lg text-[#9b9bb2] transition hover:text-white" @click="emit('close')">&times;</button>
+          <button aria-label="Close panel" class="text-lg text-[#9b9bb2] transition-colors hover:text-white" @click="emit('close')">&times;</button>
         </div>
         <div class="mt-2.5 flex items-center gap-2">
           <span class="text-[10px] uppercase tracking-wider text-[#8b8ba7]">Send to</span>
@@ -100,7 +100,7 @@ function padIndex(idx: number) {
             <button
               v-for="editor in editors"
               :key="editor.key"
-              class="rounded px-2 py-0.5 text-[11px] font-medium transition"
+              class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
               :class="selectedEditor === editor.key
                 ? 'bg-[#42b883]/15 text-[#42b883]'
                 : 'text-[#8b8ba7] hover:text-[#9b9bb2]'"
@@ -129,7 +129,7 @@ function padIndex(idx: number) {
               <span class="font-mono text-[10px] font-bold text-[#42b883]">{{ padIndex(idx) }}</span>
               <span class="text-[13px] font-semibold tracking-tight text-white">{{ item.data.componentName }}</span>
             </div>
-            <button class="text-sm text-[#8b8ba7] transition hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
+            <button aria-label="Remove component" class="text-sm text-[#8b8ba7] transition-colors hover:text-red-400" @click="emit('remove', item.id)">&times;</button>
           </div>
 
           <!-- Card body -->
@@ -140,11 +140,14 @@ function padIndex(idx: number) {
 
             <input
               type="text"
-              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] outline-none transition placeholder:text-[#8b8ba7]"
+              :aria-label="`Note for ${item.data.componentName}`"
+              :name="`note-${item.id}`"
+              autocomplete="off"
+              class="w-full rounded-md border bg-white/[0.03] px-2.5 py-[7px] text-xs text-[#e0e0e0] transition-colors placeholder:text-[#8b8ba7]"
               :class="item.comment
                 ? 'border-[#42b883]/[0.12] bg-[#42b883]/[0.04] focus:border-[#42b883]'
                 : 'border-white/[0.06] focus:border-[#42b883]'"
-              placeholder="Add a note..."
+              placeholder="Add a note…"
               :value="item.comment"
               @input="emit('update:comment', item.id, ($event.target as HTMLInputElement).value)"
             />
@@ -223,20 +226,20 @@ function padIndex(idx: number) {
       <!-- Actions -->
       <div v-if="items.length > 0" class="flex flex-col gap-2 border-t border-white/[0.06] bg-[#13132a] px-4 py-3">
         <button
-          class="w-full rounded-lg bg-gradient-to-br from-[#42b883] to-[#38a576] py-2.5 text-[13px] font-semibold tracking-tight text-white transition hover:brightness-110"
+          class="w-full rounded-lg bg-gradient-to-br from-[#42b883] to-[#38a576] py-2.5 text-[13px] font-semibold tracking-tight text-white transition-[filter] hover:brightness-110"
           @click="handleSend"
         >
           {{ sendLabel }}
         </button>
         <div class="flex gap-1.5">
           <button
-            class="flex-1 rounded-md bg-white/[0.04] py-[7px] text-xs font-medium text-[#8b8ba7] transition hover:text-white"
+            class="flex-1 rounded-md bg-white/[0.04] py-[7px] text-xs font-medium text-[#8b8ba7] transition-colors hover:text-white"
             @click="emit('copy')"
           >
             Copy to clipboard
           </button>
           <button
-            class="rounded-md bg-white/[0.04] px-4 py-[7px] text-xs font-medium text-[#8b8ba7] transition hover:bg-red-500/10 hover:text-red-400"
+            class="rounded-md bg-white/[0.04] px-4 py-[7px] text-xs font-medium text-[#8b8ba7] transition-colors hover:bg-red-500/10 hover:text-red-400"
             @click="emit('clear')"
           >
             Clear
@@ -248,6 +251,8 @@ function padIndex(idx: number) {
 </template>
 
 <style scoped>
-.panel-enter-active, .panel-leave-active { transition: transform 0.2s ease; }
+@media (prefers-reduced-motion: no-preference) {
+  .panel-enter-active, .panel-leave-active { transition: transform 0.2s ease; }
+}
 .panel-enter-from, .panel-leave-to { transform: translateX(380px); }
 </style>

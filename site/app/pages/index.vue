@@ -20,7 +20,7 @@ function updateComment(id: string, comment: string) {
 </script>
 
 <template>
-  <div>
+  <main id="main-content">
     <GrabOverlay
       :is-active="grab.isActive.value"
       :hovered-component="grab.hoveredComponent.value"
@@ -44,5 +44,5 @@ function updateComment(id: string, comment: string) {
     <SiteFeatures />
     <SiteInstall />
     <SiteFooter />
-  </div>
+  </main>
 </template>

@@ -19,6 +19,7 @@ export default defineNuxtConfig({
       title: 'Vue Grab - Select context for AI coding agents from your Vue app',
       meta: [
         { name: 'description', content: 'Click any Vue component to extract its context for Claude Code, Cursor, and other AI coding assistants.' },
+        { name: 'theme-color', content: '#0a0a1a' },
         { property: 'og:title', content: 'Vue Grab' },
         { property: 'og:description', content: 'Select context for AI coding agents directly from your Vue app' },
       ],

@@ -13,7 +13,7 @@ const ordersChart = [15, 14, 16, 13, 12, 11, 10, 10]
 <template>
   <div class="overflow-hidden rounded-xl border border-white/[0.06] shadow-2xl">
     <!-- Browser chrome -->
-    <div class="flex items-center gap-3 bg-[#1a1a2e] px-4 py-2.5">
+    <div class="flex items-center gap-3 bg-[#1a1a2e] px-4 py-2.5" aria-hidden="true">
       <div class="flex gap-1.5">
         <span class="h-2.5 w-2.5 rounded-full bg-[#e74c3c]"></span>
         <span class="h-2.5 w-2.5 rounded-full bg-[#f39c12]"></span>

@@ -20,14 +20,14 @@ defineEmits<{
         </div>
         <a
           href="https://github.com/estern1011/vue-grab"
-          class="rounded-lg border border-white/[0.06] px-4 py-2 text-sm font-medium text-[#e0e0e0] transition hover:border-white/10 hover:bg-white/[0.02]"
+          class="rounded-lg border border-white/[0.06] px-4 py-2 text-sm font-medium text-[#e0e0e0] transition-colors hover:border-white/10 hover:bg-white/[0.02]"
         >
           GitHub
         </a>
       </div>
 
-      <div id="try-it" class="rounded-xl border border-white/[0.06] bg-[#0d0d1a] p-6">
-        <h2 class="mb-3 text-lg font-semibold text-white">Interactive demo</h2>
+      <div id="try-it" class="scroll-mt-20 rounded-xl border border-white/[0.06] bg-[#0d0d1a] p-6">
+        <h2 class="mb-3 text-lg font-semibold text-white text-pretty">Interactive demo</h2>
         <div class="mb-4 flex items-center justify-between">
           <p class="text-sm text-[#9b9bb2]">
             <template v-if="!grabActive">
@@ -41,7 +41,7 @@ defineEmits<{
             </template>
           </p>
           <button
-            class="vue-grab-embedded-btn shrink-0 rounded-lg px-5 py-2 text-sm font-semibold transition"
+            class="vue-grab-embedded-btn shrink-0 rounded-lg px-5 py-2 text-sm font-semibold transition-colors"
             :class="grabActive
               ? 'border border-red-500/30 bg-red-500/15 text-red-400 hover:bg-red-500/25'
               : 'bg-[#42b883] text-white hover:bg-[#35a372]'"

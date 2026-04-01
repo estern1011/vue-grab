@@ -26,7 +26,7 @@ const summary = computed(() => {
   if (Array.isArray(v)) return `Array(${v.length})`
   if (typeof v === 'object' && v !== null) {
     const k = Object.keys(v)
-    return `{${k.slice(0, 3).join(', ')}${k.length > 3 ? ', ...' : ''}}`
+    return `{${k.slice(0, 3).join(', ')}${k.length > 3 ? ', …' : ''}}`
   }
   return ''
 })
@@ -43,7 +43,7 @@ const summary = computed(() => {
       <span v-else-if="typeof value === 'boolean'" class="text-[#e78284]">{{ value }}</span>
       <span v-else-if="typeof value === 'number'" class="text-[#ef9f76]">{{ value }}</span>
       <span v-else-if="typeof value === 'string' && value.startsWith('[')" class="text-[#9498b8]">{{ value }}</span>
-      <span v-else-if="typeof value === 'string'" class="text-[#a6d189]">"{{ value.length > 60 ? value.slice(0, 57) + '...' : value }}"</span>
+      <span v-else-if="typeof value === 'string'" class="text-[#a6d189]">"{{ value.length > 60 ? value.slice(0, 57) + '…' : value }}"</span>
       <span v-else-if="d >= maxDepth && isArray" class="text-[#81a1c1]">Array({{ value.length }})</span>
       <span v-else-if="d >= maxDepth" class="text-[#81a1c1]">{{ summary }}</span>
       <span v-else class="text-[#9b9bb2]">{{ String(value) }}</span>

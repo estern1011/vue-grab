@@ -15,7 +15,7 @@ defineEmits<{
 
       <div class="flex flex-col items-center gap-6">
         <button
-          class="vue-grab-embedded-btn rounded-lg px-6 py-3 text-sm font-semibold transition"
+          class="vue-grab-embedded-btn rounded-lg px-6 py-3 text-sm font-semibold transition-colors"
           :class="grabActive
             ? 'border border-red-500/30 bg-red-500/15 text-red-400 hover:bg-red-500/25'
             : 'bg-[#42b883] text-white shadow-lg shadow-[#42b883]/20 hover:bg-[#35a372]'"

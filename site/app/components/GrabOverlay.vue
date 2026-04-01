@@ -16,6 +16,8 @@ defineEmits<{
   <Transition name="indicator">
     <div
       v-if="isActive"
+      aria-live="polite"
+      role="status"
       class="vue-grab-embedded-btn fixed bottom-5 left-5 z-[999997] rounded-lg bg-[#42b883] px-4 py-3 font-sans text-[13px] font-medium text-white shadow-lg"
     >
       <div class="mb-2 flex items-center gap-2 text-sm font-semibold">
@@ -63,9 +65,9 @@ defineEmits<{
 </template>
 
 <style scoped>
-.indicator-enter-active, .indicator-leave-active { transition: all 0.2s ease; }
+.indicator-enter-active, .indicator-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
 .indicator-enter-from, .indicator-leave-to { opacity: 0; transform: translateY(20px); }
 
-.breadcrumb-enter-active, .breadcrumb-leave-active { transition: all 0.15s ease; }
+.breadcrumb-enter-active, .breadcrumb-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
 .breadcrumb-enter-from, .breadcrumb-leave-to { opacity: 0; transform: translate(-50%, -10px); }
 </style>
