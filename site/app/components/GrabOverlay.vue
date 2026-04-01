@@ -23,10 +23,13 @@ defineEmits<{
       </div>
       <div class="flex flex-wrap gap-2 text-[11px] font-normal opacity-90">
         <span class="flex items-center gap-1">
-          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Click</kbd> Add to list
+          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Click</kbd>/<kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd> Grab
         </span>
         <span class="flex items-center gap-1">
-          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">⌥↑↓</kbd> Navigate
+          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Tab</kbd> Next
+        </span>
+        <span class="flex items-center gap-1">
+          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">⌥↑↓</kbd> Tree
         </span>
         <span class="flex items-center gap-1">
           <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd> Done

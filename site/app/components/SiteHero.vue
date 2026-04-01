@@ -33,9 +33,10 @@ defineEmits<{
               Click components in the demo below to grab their props, state, and stores.
             </template>
             <template v-else>
-              Hover to see component names. <strong class="text-white">Click to grab.</strong>
-              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Alt+↑↓</kbd> navigate tree.
-              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Esc</kbd> to stop.
+              <strong class="text-white">Click</strong> or <kbd class="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Enter</kbd> to grab.
+              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Tab</kbd> next component.
+              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Alt+↑↓</kbd> tree.
+              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Esc</kbd> stop.
             </template>
           </p>
           <button

@@ -34,6 +34,8 @@ export function useVueGrab() {
   let currentHierarchy: HierarchyItem[] = []
   let currentHierarchyIndex = -1
   let lastHoveredElement: HTMLElement | null = null
+  let tabbableComponents: { el: HTMLElement; name: string; instance: any }[] = []
+  let tabIndex = -1
 
   function activate() {
     isActive.value = true
@@ -70,6 +72,7 @@ export function useVueGrab() {
 
     clearHighlight()
     lastHoveredElement = target
+    tabIndex = -1 // Reset tab cycling when mouse takes over
 
     // Build hierarchy from root down to the hovered component
     currentHierarchy = buildHierarchy(info.instance)
@@ -129,27 +132,115 @@ export function useVueGrab() {
       return
     }
 
-    if (!e.altKey || currentHierarchy.length === 0) return
-
-    if (e.key === 'ArrowUp') {
+    // Enter: grab the currently highlighted component
+    if (e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
-      if (currentHierarchyIndex > 0) {
+      grabCurrentComponent()
+      return
+    }
+
+    // Tab / Shift+Tab: cycle through visible Vue components
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      e.stopPropagation()
+      cycleComponents(e.shiftKey ? -1 : 1)
+      return
+    }
+
+    // Alt+Arrow: hierarchy navigation
+    if (e.altKey && e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (currentHierarchy.length > 0 && currentHierarchyIndex > 0) {
         currentHierarchyIndex--
         applyHierarchyNavigation()
       }
       return
     }
 
-    if (e.key === 'ArrowDown') {
+    if (e.altKey && e.key === 'ArrowDown') {
       e.preventDefault()
       e.stopPropagation()
-      if (currentHierarchyIndex < currentHierarchy.length - 1) {
+      if (currentHierarchy.length > 0 && currentHierarchyIndex < currentHierarchy.length - 1) {
         currentHierarchyIndex++
         applyHierarchyNavigation()
       }
       return
     }
+  }
+
+  function grabCurrentComponent() {
+    const item = currentHierarchy[currentHierarchyIndex]
+    if (item) {
+      const result = extractFromInstance(item.instance, item.name)
+      if (result) {
+        grabbedItems.value.push({
+          id: Math.random().toString(36).slice(2),
+          data: result,
+          comment: '',
+        })
+      }
+    }
+  }
+
+  function cycleComponents(direction: 1 | -1) {
+    // Rebuild the list of tabbable components each time (DOM may have changed)
+    tabbableComponents = collectVisibleComponents()
+    if (tabbableComponents.length === 0) return
+
+    tabIndex += direction
+    if (tabIndex >= tabbableComponents.length) tabIndex = 0
+    if (tabIndex < 0) tabIndex = tabbableComponents.length - 1
+
+    const target = tabbableComponents[tabIndex]
+    clearHighlight()
+    lastHoveredElement = target.el
+
+    currentHierarchy = buildHierarchy(target.instance)
+    currentHierarchyIndex = currentHierarchy.length - 1
+    syncHierarchyRefs()
+
+    highlightElement(target.el)
+    hoveredComponent.value = target.name
+    showLabel(target.el, target.name)
+
+    // Scroll into view if needed
+    target.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
+  function collectVisibleComponents(): { el: HTMLElement; name: string; instance: any }[] {
+    const results: { el: HTMLElement; name: string; instance: any }[] = []
+    const seen = new WeakSet()
+
+    // Walk all elements inside the demo app area
+    const demoRoot = document.querySelector('.vue-grab-embedded-panel')
+      ? document.body
+      : document.querySelector('#try-it') || document.body
+
+    const walker = document.createTreeWalker(demoRoot, NodeFilter.SHOW_ELEMENT)
+    let node: Node | null = walker.currentNode
+    while (node) {
+      const el = node as HTMLElement
+      if (el.closest?.('.vue-grab-embedded-panel') || el.closest?.('.vue-grab-embedded-btn')) {
+        node = walker.nextNode()
+        continue
+      }
+      const inst = (el as any).__vueParentComponent
+      if (inst && !seen.has(inst)) {
+        seen.add(inst)
+        const name = inst.type?.name || inst.type?.__name || 'Anonymous'
+        if (name !== 'Anonymous') {
+          const rect = el.getBoundingClientRect()
+          // Only include visible elements with non-zero dimensions
+          if (rect.width > 0 && rect.height > 0) {
+            results.push({ el, name, instance: inst })
+          }
+        }
+      }
+      node = walker.nextNode()
+    }
+    return results
   }
 
   function applyHierarchyNavigation() {

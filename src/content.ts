@@ -60,6 +60,10 @@ let panelElement: HTMLElement | null = null;
 let mouseoverThrottleTimer: number | null = null;
 const MOUSEOVER_THROTTLE_MS = 100;
 
+// Tab cycling state
+let tabbableElements: HTMLElement[] = [];
+let tabCycleIndex = -1;
+
 // Track pending action for keyboard shortcuts
 let pendingAction: 'grab' | 'editor' | null = null;
 
@@ -277,6 +281,7 @@ function handleMouseOver(e: MouseEvent): void {
   if (mouseoverThrottleTimer !== null) return;
 
   hoveredElement = target;
+  tabCycleIndex = -1; // Reset tab cycling when mouse takes over
   const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
   hoveredElement.setAttribute('data-vue-grab-id', elementId);
 
@@ -358,6 +363,13 @@ function handleKeyDown(e: KeyboardEvent): void {
     return;
   }
 
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    e.stopPropagation();
+    cycleTabComponents(e.shiftKey ? -1 : 1);
+    return;
+  }
+
   if (e.altKey && e.key === 'ArrowUp') {
     e.preventDefault();
     e.stopPropagation();
@@ -395,6 +407,68 @@ function extractCurrentComponent(): void {
   }
   // No element selected
   pendingAction = null;
+}
+
+// ============================================================================
+// Tab cycling through visible Vue components
+// ============================================================================
+
+function cycleTabComponents(direction: 1 | -1): void {
+  tabbableElements = collectVisibleVueElements();
+  if (tabbableElements.length === 0) return;
+
+  tabCycleIndex += direction;
+  if (tabCycleIndex >= tabbableElements.length) tabCycleIndex = 0;
+  if (tabCycleIndex < 0) tabCycleIndex = tabbableElements.length - 1;
+
+  const el = tabbableElements[tabCycleIndex];
+
+  // Clear previous hover state
+  if (hoveredElement) {
+    hoveredElement.classList.remove('vue-grab-highlight');
+    hoveredElement.removeAttribute('data-vue-grab-id');
+  }
+
+  // Apply highlight to new element
+  hoveredElement = el;
+  el.classList.add('vue-grab-highlight');
+
+  const elementId = 'vue-grab-' + Math.random().toString(36).substring(2, 11);
+  el.setAttribute('data-vue-grab-id', elementId);
+
+  // Get component info via bridge
+  sendBridgeRequest({ type: 'VUE_GRAB_GET_INFO', elementId });
+
+  // Scroll into view
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function collectVisibleVueElements(): HTMLElement[] {
+  const results: HTMLElement[] = [];
+  const seen = new WeakSet<any>();
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+  let node: Node | null = walker.currentNode;
+  while (node) {
+    const el = node as HTMLElement;
+    if (el.closest?.('.vue-grab-panel') || el.closest?.('.vue-grab-active-indicator') || el.closest?.('.vue-grab-breadcrumb')) {
+      node = walker.nextNode();
+      continue;
+    }
+    const inst = (el as any).__vueParentComponent;
+    if (inst && !seen.has(inst)) {
+      seen.add(inst);
+      const name = inst.type?.name || inst.type?.__name;
+      if (name) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          results.push(el);
+        }
+      }
+    }
+    node = walker.nextNode();
+  }
+  return results;
 }
 
 // ============================================================================
@@ -1179,7 +1253,8 @@ function showActiveIndicator(): void {
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
       <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Add to list</span>
-      <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
+      <span class="shortcut"><kbd>Tab</kbd> Next component</span>
+      <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate tree</span>
       <span class="shortcut"><kbd>Esc</kbd> Done</span>
     </div>
   `;
