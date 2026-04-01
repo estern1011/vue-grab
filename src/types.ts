@@ -16,6 +16,7 @@ export interface IDEConfig {
   name: string;
   scheme: string;
   buildUrl: (filePath: string) => string;
+  buildPromptUrl?: (context: string) => string;
 }
 
 /**
@@ -66,6 +67,13 @@ export interface ElementInfo {
   id: string | null;
   classes: string[];
   attributes: Record<string, string>;
+  selector: string | null;
+  xpath: string | null;
+  textContent: string | null;
+  boundingBox: { x: number; y: number; width: number; height: number } | null;
+  pageUrl: string | null;
+  renderedHtml: string | null;
+  computedStyles: Record<string, string> | null;
 }
 
 /**

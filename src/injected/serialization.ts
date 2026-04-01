@@ -36,6 +36,11 @@ export function serializeData(obj: any): any {
       }
       seen.add(value);
 
+      // Unwrap Vue refs (have __v_isRef flag and .value)
+      if (value && '__v_isRef' in value && 'value' in value) {
+        return serialize(value.value, depth);
+      }
+
       if (Array.isArray(value)) {
         return value.map(item => serialize(item, depth + 1));
       }
@@ -48,8 +53,31 @@ export function serializeData(obj: any): any {
         return value.toISOString();
       }
 
+      if (value instanceof Map) {
+        const mapObj: Record<string, any> = {};
+        value.forEach((v, k) => {
+          mapObj[String(k)] = serialize(v, depth + 1);
+        });
+        return mapObj;
+      }
+
+      if (value instanceof Set) {
+        return Array.from(value).map(item => serialize(item, depth + 1));
+      }
+
+      if (value instanceof RegExp) {
+        return value.toString();
+      }
+
+      // Use Object.keys instead of for...in to work better with Vue proxies
       const result: Record<string, any> = {};
-      for (const key in value) {
+      let keys: string[];
+      try {
+        keys = Object.keys(value);
+      } catch {
+        return '[Unserializable]';
+      }
+      for (const key of keys) {
         if (key.startsWith('_') || key.startsWith('$')) continue;
 
         try {

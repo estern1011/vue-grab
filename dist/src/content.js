@@ -1,102 +1,140 @@
-(function(){"use strict";const F={cursor:{name:"Cursor",scheme:"cursor",buildUrl:e=>`cursor://file/${e||""}`},windsurf:{name:"Windsurf",scheme:"windsurf",buildUrl:e=>`windsurf://file/${e||""}`},"claude-code":{name:"Claude Code",scheme:"",buildUrl:()=>""}},j={EXTRACTION_TIMEOUT:3e3,TOAST_DURATION:3e3,DEFAULT_EDITOR:"cursor"},h=Q();let m=!1,l=null,f=null,g=null,b=-1,v=null,p=null,w=j.DEFAULT_EDITOR,a=[],c=null,y=null;const H=100;let $=null;chrome.storage&&chrome.storage.local&&chrome.storage.local.get(["selectedEditor"],e=>{e.selectedEditor&&(w=e.selectedEditor)});function I(){const e=document.createElement("script");e.src=chrome.runtime.getURL("src/injected/index.js"),e.onload=function(){this.remove()},(document.head||document.documentElement).appendChild(e)}document.head||document.documentElement?I():document.addEventListener("DOMContentLoaded",I),h?h.element.addEventListener(h.config.responseEvent,K):console.error("Vue Grab: Bridge initialization failed. Extraction will not work.");function K(e){const t=e.detail;if(t)if(t.type==="VUE_GRAB_COMPONENT_DATA"){window._vueGrabExtractionTimeout&&(clearTimeout(window._vueGrabExtractionTimeout),window._vueGrabExtractionTimeout=void 0);const s=t.data;if(s){const r={id:_(),componentData:s,comment:"",timestamp:Date.now()};a.push(r),O(),d(`Added ${s.componentName} to grab list`,"success"),$==="editor"&&W(s),$=null}else d(t.error||"No Vue component found","error"),$=null}else if(t.type==="VUE_GRAB_COMPONENT_INFO"){if(t.info&&l){const s=t.info.name||"Anonymous";l.classList.add("vue-grab-highlight"),ce(l,s),g=t.info.hierarchy||[],b=t.info.currentIndex??-1,q()}}else t.type==="VUE_GRAB_NAVIGATION_RESULT"&&(t.info?(g=t.info.hierarchy||[],b=t.info.currentIndex??-1,l&&l.setAttribute("data-vue-component",t.info.name||"Anonymous"),q()):t.error&&d(t.error,"error"))}function Q(){const e=document.documentElement||document.body;if(!e)return null;const n=_(),t={bridgeId:`vue-grab-bridge-${n}`,requestEvent:`vue-grab-request-${n}`,responseEvent:`vue-grab-response-${n}`},s=document.createElement("div");return s.id=t.bridgeId,s.style.display="none",s.setAttribute("data-vue-grab-bridge","true"),s.setAttribute("data-request-event",t.requestEvent),s.setAttribute("data-response-event",t.responseEvent),e.appendChild(s),{element:s,config:t}}function _(){if(window.crypto&&window.crypto.getRandomValues){const e=new Uint32Array(2);return window.crypto.getRandomValues(e),Array.from(e,n=>n.toString(16)).join("")}return Math.random().toString(36).substring(2,11)}function S(e){if(!h){console.warn("Vue Grab: Cannot communicate with injected script.");return}const n=new CustomEvent(h.config.requestEvent,{detail:e,bubbles:!1,composed:!1});h.element.dispatchEvent(n)}function W(e){const n=e?.filePath,t=F[w];if(t&&t.scheme&&n){const s=t.buildUrl(n);try{window.open(s,"_blank")}catch(r){console.error("Vue Grab: Could not open editor:",r)}}}chrome.runtime.onMessage.addListener((e,n,t)=>{if(e.action==="toggle")m=!m,m?X():T(),t({isActive:m});else if(e.action==="getState")t({isActive:m,hasData:a.length>0});else if(e.action==="getLastData"){const s=a[a.length-1];t({data:s?.componentData||null})}else e.action==="setEditor"&&(w=e.editor,t({success:!0}));return!0});function X(){document.addEventListener("mouseover",L),document.addEventListener("mouseout",G),document.addEventListener("click",U,!0),document.addEventListener("keydown",D),ae(),z(),d("Vue Grab activated! Click elements to add them to your grab list.","success")}function T(){document.removeEventListener("mouseover",L),document.removeEventListener("mouseout",G),document.removeEventListener("click",U,!0),document.removeEventListener("keydown",D),y!==null&&(clearTimeout(y),y=null),l&&(l.classList.remove("vue-grab-highlight"),l.removeAttribute("data-vue-grab-id")),g=null,b=-1,le(),N(),V(),Z()}function L(e){if(!m)return;const n=e.target;if(n.closest(".vue-grab-panel")||y!==null)return;l=n;const t="vue-grab-"+Math.random().toString(36).substring(2,11);l.setAttribute("data-vue-grab-id",t),S({type:"VUE_GRAB_GET_INFO",elementId:t}),y=window.setTimeout(()=>{y=null},H)}function G(e){m&&(l&&(l.classList.remove("vue-grab-highlight"),l.removeAttribute("data-vue-grab-id"),l=null),V(),g=null,b=-1,N())}function U(e){if(!m)return;const n=e.target;n.closest(".vue-grab-panel")||(e.preventDefault(),e.stopPropagation(),R(e.metaKey||e.ctrlKey,n))}function R(e,n){if($=e?"editor":"grab",!l&&n&&(l=n),!l){d("No element selected. Hover over an element first.","error");return}if(!l.getAttribute("data-vue-grab-id")){const s="vue-grab-"+Math.random().toString(36).substring(2,11);l.setAttribute("data-vue-grab-id",s)}const t=window.setTimeout(()=>{d("Extraction timed out. Try again.","error"),$=null},j.EXTRACTION_TIMEOUT);window._vueGrabExtractionTimeout=t,Y()}function D(e){if(m){if(e.key==="Escape"){T(),m=!1,d("Vue Grab deactivated","success");return}if(e.key==="Enter"){e.preventDefault(),e.stopPropagation(),R(e.metaKey||e.ctrlKey,null);return}if(e.altKey&&e.key==="ArrowUp"){e.preventDefault(),e.stopPropagation(),S({type:"VUE_GRAB_NAVIGATE_PARENT"});return}if(e.altKey&&e.key==="ArrowDown"){e.preventDefault(),e.stopPropagation(),S({type:"VUE_GRAB_NAVIGATE_CHILD"});return}}}function Y(){if(b>=0&&g&&g.length>0){S({type:"VUE_GRAB_EXTRACT_CURRENT"});return}if(l){let e=l.getAttribute("data-vue-grab-id");e||(e="vue-grab-"+Math.random().toString(36).substring(2,11),l.setAttribute("data-vue-grab-id",e)),S({type:"VUE_GRAB_EXTRACT",elementId:e});return}window._vueGrabExtractionTimeout&&(clearTimeout(window._vueGrabExtractionTimeout),window._vueGrabExtractionTimeout=void 0),d("No element selected. Try hovering over a component first.","error"),$=null}function z(){c||(c=document.createElement("div"),c.className="vue-grab-panel",c.innerHTML=ee(),document.body.appendChild(c),se())}function Z(){c&&(c.remove(),c=null)}function O(){if(!c)return;const e=c.querySelector(".vue-grab-panel-list"),n=c.querySelector(".vue-grab-panel-count"),t=c.querySelector(".vue-grab-panel-actions");e&&(e.innerHTML=P()),n&&(n.textContent=`${a.length} component${a.length!==1?"s":""}`),t&&(t.style.display=a.length>0?"flex":"none"),B()}function ee(){return`
+(function(){"use strict";const w={cursor:{name:"Cursor",scheme:"cursor",buildUrl:e=>`cursor://file/${e||""}`,buildPromptUrl:e=>`cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(e)}`},windsurf:{name:"Windsurf",scheme:"windsurf",buildUrl:e=>`windsurf://file/${e||""}`},"claude-code":{name:"Claude Code",scheme:"",buildUrl:()=>""}},P={EXTRACTION_TIMEOUT:3e3,DEFAULT_EDITOR:"cursor"},x=z();let d=!1,u=null,f=null,g=null,b=-1,m=null,p=null,h=P.DEFAULT_EDITOR,o=[],c=null,$=null;const X=100;let S=null;chrome.storage&&chrome.storage.local&&chrome.storage.local.get(["selectedEditor"],e=>{e.selectedEditor&&(h=e.selectedEditor)});function _(){const e=document.createElement("script");e.src=chrome.runtime.getURL("src/injected/index.js"),e.onload=function(){this.remove()},(document.head||document.documentElement).appendChild(e)}document.head||document.documentElement?_():document.addEventListener("DOMContentLoaded",_),x?x.element.addEventListener(x.config.responseEvent,Y):console.error("Vue Grab: Bridge initialization failed. Extraction will not work.");function Y(e){const t=e.detail;if(t)if(t.type==="VUE_GRAB_COMPONENT_DATA"){window._vueGrabExtractionTimeout&&(clearTimeout(window._vueGrabExtractionTimeout),window._vueGrabExtractionTimeout=void 0);const n=t.data;if(n){const r={id:V(),componentData:n,comment:"",timestamp:Date.now()};o.push(r),O(),S==="editor"&&Z(n),S=null}else S=null}else if(t.type==="VUE_GRAB_COMPONENT_INFO"){if(t.info&&u){const n=t.info.name||"Anonymous";u.classList.add("vue-grab-highlight"),pe(u,n),g=t.info.hierarchy||[],b=t.info.currentIndex??-1,W()}}else t.type==="VUE_GRAB_NAVIGATION_RESULT"&&(t.info?(g=t.info.hierarchy||[],b=t.info.currentIndex??-1,u&&u.setAttribute("data-vue-component",t.info.name||"Anonymous"),W()):t.error)}function z(){const e=document.documentElement||document.body;if(!e)return null;const s=V(),t={bridgeId:`vue-grab-bridge-${s}`,requestEvent:`vue-grab-request-${s}`,responseEvent:`vue-grab-response-${s}`},n=document.createElement("div");return n.id=t.bridgeId,n.style.display="none",n.setAttribute("data-vue-grab-bridge","true"),n.setAttribute("data-request-event",t.requestEvent),n.setAttribute("data-response-event",t.responseEvent),e.appendChild(n),{element:n,config:t}}function V(){if(window.crypto&&window.crypto.getRandomValues){const e=new Uint32Array(2);return window.crypto.getRandomValues(e),Array.from(e,s=>s.toString(16)).join("")}return Math.random().toString(36).substring(2,11)}function k(e){if(!x){console.warn("Vue Grab: Cannot communicate with injected script.");return}const s=new CustomEvent(x.config.requestEvent,{detail:e,bubbles:!1,composed:!1});x.element.dispatchEvent(s)}function Z(e){const s=e?.filePath,t=w[h];if(t&&t.scheme&&s){const n=t.buildUrl(s);try{window.open(n,"_blank")}catch(r){console.error("Vue Grab: Could not open editor:",r)}}}chrome.runtime.onMessage.addListener((e,s,t)=>{if(e.action==="toggle")d=!d,d?ee():A(),t({isActive:d});else if(e.action==="getState")t({isActive:d,hasData:o.length>0});else if(e.action==="getLastData"){const n=o[o.length-1];t({data:n?.componentData||null})}else e.action==="setEditor"&&(h=e.editor,t({success:!0}));return!0});function ee(){document.addEventListener("mouseover",B),document.addEventListener("mouseout",I),document.addEventListener("click",D,!0),document.addEventListener("keydown",G),ue(),ne()}function A(){document.removeEventListener("mouseover",B),document.removeEventListener("mouseout",I),document.removeEventListener("click",D,!0),document.removeEventListener("keydown",G),$!==null&&(clearTimeout($),$=null),u&&(u.classList.remove("vue-grab-highlight"),u.removeAttribute("data-vue-grab-id")),g=null,b=-1,de(),L(),U(),se()}function B(e){if(!d)return;const s=e.target;if(s.closest(".vue-grab-panel")||$!==null)return;u=s;const t="vue-grab-"+Math.random().toString(36).substring(2,11);u.setAttribute("data-vue-grab-id",t),k({type:"VUE_GRAB_GET_INFO",elementId:t}),$=window.setTimeout(()=>{$=null},X)}function I(e){d&&(u&&(u.classList.remove("vue-grab-highlight"),u.removeAttribute("data-vue-grab-id"),u=null),U(),g=null,b=-1,L())}function D(e){if(!d)return;const s=e.target;s.closest(".vue-grab-panel")||(e.preventDefault(),e.stopPropagation(),R(e.metaKey||e.ctrlKey,s))}function R(e,s){if(S=e?"editor":"grab",!u&&s&&(u=s),!u)return;if(!u.getAttribute("data-vue-grab-id")){const n="vue-grab-"+Math.random().toString(36).substring(2,11);u.setAttribute("data-vue-grab-id",n)}const t=window.setTimeout(()=>{S=null},P.EXTRACTION_TIMEOUT);window._vueGrabExtractionTimeout=t,te()}function G(e){if(d){if(e.key==="Escape"){A(),d=!1;return}if(e.key==="Enter"){e.preventDefault(),e.stopPropagation(),R(e.metaKey||e.ctrlKey,null);return}if(e.altKey&&e.key==="ArrowUp"){e.preventDefault(),e.stopPropagation(),k({type:"VUE_GRAB_NAVIGATE_PARENT"});return}if(e.altKey&&e.key==="ArrowDown"){e.preventDefault(),e.stopPropagation(),k({type:"VUE_GRAB_NAVIGATE_CHILD"});return}}}function te(){if(b>=0&&g&&g.length>0){k({type:"VUE_GRAB_EXTRACT_CURRENT"});return}if(u){let e=u.getAttribute("data-vue-grab-id");e||(e="vue-grab-"+Math.random().toString(36).substring(2,11),u.setAttribute("data-vue-grab-id",e)),k({type:"VUE_GRAB_EXTRACT",elementId:e});return}window._vueGrabExtractionTimeout&&(clearTimeout(window._vueGrabExtractionTimeout),window._vueGrabExtractionTimeout=void 0),S=null}function ne(){c||(c=document.createElement("div"),c.className="vue-grab-panel",c.innerHTML=M(),document.body.appendChild(c),J())}function se(){c&&(c.remove(),c=null)}function O(){if(!c)return;const e=c.querySelector(".vue-grab-panel-list"),s=c.querySelector(".vue-grab-panel-count"),t=c.querySelector(".vue-grab-panel-actions");e&&(e.innerHTML=H()),s&&(s.textContent=`${o.length} component${o.length!==1?"s":""}`),t&&(t.style.display=o.length>0?"flex":"none"),T()}function M(){const e=Object.entries(w).map(([r,a])=>`<button class="vue-grab-panel-editor-btn ${r===h?"active":""}" data-editor="${r}">${a.name}</button>`).join(""),s=w[h],n=s?.buildPromptUrl?`Send to ${s.name}`:`Copy for ${s?.name||"Editor"}`;return`
     <div class="vue-grab-panel-header">
-      <div class="vue-grab-panel-title">
-        <span class="vue-grab-panel-logo">Vue Grab</span>
-        <span class="vue-grab-panel-count">${a.length} component${a.length!==1?"s":""}</span>
+      <div class="vue-grab-panel-header-top">
+        <div class="vue-grab-panel-title">
+          <span class="vue-grab-panel-logo">Vue Grab</span>
+          <span class="vue-grab-panel-count">${o.length} component${o.length!==1?"s":""}</span>
+        </div>
+        <button class="vue-grab-panel-close" title="Close (Esc)">&times;</button>
       </div>
-      <button class="vue-grab-panel-close" title="Close (Esc)">&times;</button>
+      <div class="vue-grab-panel-editor-row">
+        <span class="vue-grab-panel-editor-label">Send to</span>
+        ${e}
+      </div>
     </div>
     <div class="vue-grab-panel-list">
-      ${P()}
+      ${H()}
     </div>
-    <div class="vue-grab-panel-actions" style="display: ${a.length>0?"flex":"none"}">
-      <button class="vue-grab-panel-copy-all">Copy All</button>
+    <div class="vue-grab-panel-actions" style="display: ${o.length>0?"flex":"none"}">
+      <button class="vue-grab-panel-send">${n}</button>
+      <button class="vue-grab-panel-copy-all">Copy</button>
       <button class="vue-grab-panel-clear">Clear</button>
     </div>
-    <div class="vue-grab-panel-empty" style="display: ${a.length===0?"block":"none"}">
+    <div class="vue-grab-panel-empty" style="display: ${o.length===0?"block":"none"}">
       Click any element on the page to grab its Vue component context.
     </div>
-  `}function P(){return a.length===0?"":a.map((e,n)=>{const t=e.componentData;return`
+  `}function H(){return o.length===0?"":o.map((e,s)=>{const t=e.componentData;return`
       <div class="vue-grab-panel-item" data-item-id="${e.id}">
         <div class="vue-grab-panel-item-header">
           <div class="vue-grab-panel-item-info">
-            <span class="vue-grab-panel-item-number">${n+1}</span>
-            <span class="vue-grab-panel-item-name">${u(t.componentName)}</span>
+            <span class="vue-grab-panel-item-number">${s+1}</span>
+            <span class="vue-grab-panel-item-name">${l(t.componentName)}</span>
           </div>
           <button class="vue-grab-panel-item-remove" data-item-id="${e.id}" title="Remove">&times;</button>
         </div>
-        ${t.filePath?`<div class="vue-grab-panel-item-file">${u(t.filePath)}</div>`:""}
+        ${t.filePath?`<div class="vue-grab-panel-item-file">${l(t.filePath)}</div>`:""}
         <div class="vue-grab-panel-item-comment-row">
           <input
             type="text"
             class="vue-grab-panel-item-comment"
             data-item-id="${e.id}"
             placeholder="Add a note for the agent..."
-            value="${u(e.comment)}"
+            value="${l(e.comment)}"
           />
         </div>
         <div class="vue-grab-context">
-          ${te(t)}
+          ${re(t)}
         </div>
       </div>
-    `}).join("")}function te(e){let n="";if(e.element){const s=e.element,i=[`&lt;${u(s.tagName)}&gt;`];s.id&&i.push(`#${u(s.id)}`),s.classes?.length&&i.push(s.classes.map(o=>`.${u(o)}`).join("")),n+=`<div class="vue-grab-ctx-element">${i.join("")}</div>`}n+=E("Props",e.props);const t=e.data||e.setupState;if(n+=E("State",t),e.computed?.length&&(n+=k("Computed",e.computed)),e.methods?.length&&(n+=k("Methods",e.methods)),e.piniaStores?.length){const s=e.piniaStores.filter(i=>i.usedByComponent==="definitely"),r=e.piniaStores.filter(i=>i.usedByComponent!=="definitely");if(s.length)for(const i of s)n+=ne(i.id,i.state,i.getters,i.actions);r.length&&(n+=`<details class="vue-grab-ctx-section">
+    `}).join("")}function re(e){let s="";if(e.element){const n=e.element,a=[`&lt;${l(n.tagName)}&gt;`];if(n.id&&a.push(`#${l(n.id)}`),n.classes?.length&&a.push(n.classes.map(i=>`.${l(i)}`).join("")),s+=`<div class="vue-grab-ctx-element">${a.join("")}</div>`,n.selector||n.pageUrl){if(s+=`<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">Locator</summary>`,n.pageUrl&&(s+=`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">url</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string vue-grab-ctx-val--truncate">${l(n.pageUrl)}</span></div>`),n.selector&&(s+=`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">css</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${l(n.selector)}</span></div>`),n.xpath&&(s+=`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">xpath</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${l(n.xpath)}</span></div>`),n.boundingBox){const i=n.boundingBox;s+=`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">box</span><span class="vue-grab-ctx-val vue-grab-ctx-val--num">${i.x}, ${i.y} (${i.width}&times;${i.height})</span></div>`}n.textContent&&(s+=`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">text</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string vue-grab-ctx-val--truncate">"${l(n.textContent)}"</span></div>`),s+="</details>"}n.computedStyles&&Object.keys(n.computedStyles).length&&(s+=E("Styles",n.computedStyles)),n.renderedHtml&&(s+=`<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">HTML</summary>
+        <pre class="vue-grab-ctx-code">${l(n.renderedHtml)}</pre>
+      </details>`)}s+=E("Props",e.props);const t=e.data||e.setupState;if(s+=E("State",t),e.computed?.length&&(s+=C("Computed",e.computed)),e.methods?.length&&(s+=C("Methods",e.methods)),e.piniaStores?.length){const n=e.piniaStores.filter(a=>a.usedByComponent==="definitely"),r=e.piniaStores.filter(a=>a.usedByComponent!=="definitely");if(n.length)for(const a of n)s+=ie(a.id,a.state,a.getters,a.actions);r.length&&(s+=`<details class="vue-grab-ctx-section">
         <summary class="vue-grab-ctx-label">${r.length} other store${r.length!==1?"s":""}</summary>
-        <div class="vue-grab-ctx-tags">${r.map(i=>`<span class="vue-grab-ctx-tag">${u(i.id)}</span>`).join("")}</div>
-      </details>`)}if(e.vuexStore&&(n+=E("Vuex State",e.vuexStore.state),e.vuexStore.usedState.length&&(n+=k("Used State",e.vuexStore.usedState))),e.tanstackQueries?.length)for(const s of e.tanstackQueries.filter(r=>r.usedByComponent==="definitely")){const r=`Query ${JSON.stringify(s.queryKey)}`,i=s.state.status;n+=`<details class="vue-grab-ctx-section">
-        <summary class="vue-grab-ctx-label">${u(r)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--${i}">${i}</span></summary>
-        ${C(s.data)}
-      </details>`}if(e.routerState){const s=e.routerState;n+=`<details class="vue-grab-ctx-section">
+        <div class="vue-grab-ctx-tags">${r.map(a=>`<span class="vue-grab-ctx-tag">${l(a.id)}</span>`).join("")}</div>
+      </details>`)}if(e.vuexStore&&(s+=E("Vuex State",e.vuexStore.state),e.vuexStore.usedState.length&&(s+=C("Used State",e.vuexStore.usedState))),e.tanstackQueries?.length)for(const n of e.tanstackQueries.filter(r=>r.usedByComponent==="definitely")){const r=`Query ${JSON.stringify(n.queryKey)}`,a=n.state.status;s+=`<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">${l(r)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--${a}">${a}</span></summary>
+        ${y(n.data,0)}
+      </details>`}if(e.routerState){const n=e.routerState;s+=`<details class="vue-grab-ctx-section">
       <summary class="vue-grab-ctx-label">Route</summary>
       <div class="vue-grab-ctx-kv">
-        <span class="vue-grab-ctx-key">path</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${u(s.fullPath)}</span>
+        <span class="vue-grab-ctx-key">path</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${l(n.fullPath)}</span>
       </div>
-      ${s.name?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">name</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${u(String(s.name))}</span></div>`:""}
-      ${Object.keys(s.params||{}).length?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">params</span>${C(s.params)}</div>`:""}
-      ${Object.keys(s.query||{}).length?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">query</span>${C(s.query)}</div>`:""}
-    </details>`}return e.emittedEvents?.length&&(n+=k("Emits",e.emittedEvents)),e.providedValues&&Object.keys(e.providedValues).length&&(n+=E("Provides",e.providedValues)),e.injectedValues&&Object.keys(e.injectedValues).length&&(n+=E("Injects",e.injectedValues)),e.slots&&Object.keys(e.slots).length&&(n+=k("Slots",Object.keys(e.slots))),e.template&&(n+=`<details class="vue-grab-ctx-section">
+      ${n.name?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">name</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${l(String(n.name))}</span></div>`:""}
+      ${Object.keys(n.params||{}).length?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">params</span>${y(n.params,0)}</div>`:""}
+      ${Object.keys(n.query||{}).length?`<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">query</span>${y(n.query,0)}</div>`:""}
+    </details>`}return e.emittedEvents?.length&&(s+=C("Emits",e.emittedEvents)),e.providedValues&&Object.keys(e.providedValues).length&&(s+=E("Provides",e.providedValues)),e.injectedValues&&Object.keys(e.injectedValues).length&&(s+=E("Injects",e.injectedValues)),e.slots&&Object.keys(e.slots).length&&(s+=C("Slots",Object.keys(e.slots))),e.template&&(s+=`<details class="vue-grab-ctx-section">
       <summary class="vue-grab-ctx-label">Template</summary>
-      <pre class="vue-grab-ctx-code">${u(e.template)}</pre>
-    </details>`),n||'<div class="vue-grab-ctx-empty">No data extracted</div>'}function E(e,n){if(!n||Object.keys(n).length===0)return"";const t=Object.keys(n),s=4,r=t.length>s;let i="";const o=r?t.slice(0,s):t;for(const A of o)i+=`<div class="vue-grab-ctx-kv">
-      <span class="vue-grab-ctx-key">${u(A)}</span>${C(n[A])}
-    </div>`;return r&&(i+=`<div class="vue-grab-ctx-more">+${t.length-s} more</div>`),`<details class="vue-grab-ctx-section" open>
-    <summary class="vue-grab-ctx-label">${u(e)} <span class="vue-grab-ctx-count">${t.length}</span></summary>
-    ${i}
-  </details>`}function k(e,n){return`<details class="vue-grab-ctx-section" open>
-    <summary class="vue-grab-ctx-label">${u(e)} <span class="vue-grab-ctx-count">${n.length}</span></summary>
-    <div class="vue-grab-ctx-tags">${n.map(t=>`<span class="vue-grab-ctx-tag">${u(t)}</span>`).join("")}</div>
-  </details>`}function ne(e,n,t,s,r){let i="";const o=Object.keys(n||{});if(o.length){for(const x of o.slice(0,3))i+=`<div class="vue-grab-ctx-kv">
-        <span class="vue-grab-ctx-key">${u(x)}</span>${C(n[x])}
-      </div>`;o.length>3&&(i+=`<div class="vue-grab-ctx-more">+${o.length-3} more state</div>`)}const A=Object.keys(t||{});return A.length&&(i+=`<div class="vue-grab-ctx-sub">Getters: ${A.map(x=>`<span class="vue-grab-ctx-tag">${u(x)}</span>`).join("")}</div>`),s.length&&(i+=`<div class="vue-grab-ctx-sub">Actions: ${s.map(x=>`<span class="vue-grab-ctx-tag">${u(x)}</span>`).join("")}</div>`),`<details class="vue-grab-ctx-section" open>
-    <summary class="vue-grab-ctx-label">Store: ${u(e)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--success">used</span></summary>
-    ${i}
-  </details>`}function C(e){if(e==null)return`<span class="vue-grab-ctx-val vue-grab-ctx-val--null">${e===null?"null":"undefined"}</span>`;if(typeof e=="boolean")return`<span class="vue-grab-ctx-val vue-grab-ctx-val--bool">${e}</span>`;if(typeof e=="number")return`<span class="vue-grab-ctx-val vue-grab-ctx-val--num">${e}</span>`;if(typeof e=="string"){if(e.startsWith("[Function")||e.startsWith("[Circular")||e.startsWith("[Deep")||e.startsWith("[HTML"))return`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">${u(e)}</span>`;const n=e.length>60?e.slice(0,57)+"...":e;return`<span class="vue-grab-ctx-val vue-grab-ctx-val--string">"${u(n)}"</span>`}if(Array.isArray(e))return e.length===0?'<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">[]</span>':`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">Array(${e.length})</span>`;if(typeof e=="object"){const n=Object.keys(e);return n.length===0?'<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{}</span>':`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{${n.slice(0,3).join(", ")}${n.length>3?", ...":""}}</span>`}return`<span class="vue-grab-ctx-val">${u(String(e))}</span>`}function se(){if(!c)return;c.querySelector(".vue-grab-panel-close")?.addEventListener("click",()=>{T(),m=!1}),c.querySelector(".vue-grab-panel-copy-all")?.addEventListener("click",oe),c.querySelector(".vue-grab-panel-clear")?.addEventListener("click",()=>{a=[],O();const s=c?.querySelector(".vue-grab-panel-empty");s&&(s.style.display="block")}),B()}function B(){if(!c)return;c.querySelectorAll(".vue-grab-panel-item-remove").forEach(n=>{n.addEventListener("click",t=>{const s=t.currentTarget.dataset.itemId;if(a=a.filter(r=>r.id!==s),O(),a.length===0){const r=c?.querySelector(".vue-grab-panel-empty");r&&(r.style.display="block")}})}),c.querySelectorAll(".vue-grab-panel-item-comment").forEach(n=>{n.addEventListener("input",t=>{const s=t.target,r=s.dataset.itemId,i=a.find(o=>o.id===r);i&&(i.comment=s.value)}),n.addEventListener("keydown",t=>{t.stopPropagation()})});const e=c?.querySelector(".vue-grab-panel-empty");e&&(e.style.display=a.length===0?"block":"none")}function oe(){if(a.length===0){d("No components grabbed yet.","error");return}const e=re();navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(e).then(()=>{d(`Copied ${a.length} component${a.length!==1?"s":""} to clipboard!`,"success")}).catch(n=>{console.error("Could not copy to clipboard:",n),M(e),d(`Copied ${a.length} component${a.length!==1?"s":""} to clipboard!`,"success")}):(M(e),d(`Copied ${a.length} component${a.length!==1?"s":""} to clipboard!`,"success"))}function re(){if(a.length===1){const n=a[0];let t="";return n.comment&&(t+=`> **Note:** ${n.comment}
+      <pre class="vue-grab-ctx-code">${l(e.template)}</pre>
+    </details>`),s||'<div class="vue-grab-ctx-empty">No data extracted</div>'}function E(e,s){if(!s||Object.keys(s).length===0)return"";const t=Object.keys(s);let n="";for(const r of t)n+=`<div class="vue-grab-ctx-kv">
+      <span class="vue-grab-ctx-key">${l(r)}</span>${y(s[r],0)}
+    </div>`;return`<details class="vue-grab-ctx-section" open>
+    <summary class="vue-grab-ctx-label">${l(e)} <span class="vue-grab-ctx-count">${t.length}</span></summary>
+    ${n}
+  </details>`}function C(e,s){return`<details class="vue-grab-ctx-section" open>
+    <summary class="vue-grab-ctx-label">${l(e)} <span class="vue-grab-ctx-count">${s.length}</span></summary>
+    <div class="vue-grab-ctx-tags">${s.map(t=>`<span class="vue-grab-ctx-tag">${l(t)}</span>`).join("")}</div>
+  </details>`}function ie(e,s,t,n,r){let a="";const i=Object.keys(s||{});if(i.length)for(const v of i)a+=`<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key">${l(v)}</span>${y(s[v],0)}
+      </div>`;const j=Object.keys(t||{});return j.length&&(a+=`<div class="vue-grab-ctx-sub">Getters: ${j.map(v=>`<span class="vue-grab-ctx-tag">${l(v)}</span>`).join("")}</div>`),n.length&&(a+=`<div class="vue-grab-ctx-sub">Actions: ${n.map(v=>`<span class="vue-grab-ctx-tag">${l(v)}</span>`).join("")}</div>`),`<details class="vue-grab-ctx-section" open>
+    <summary class="vue-grab-ctx-label">Store: ${l(e)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--success">used</span></summary>
+    ${a}
+  </details>`}const q=4;function y(e,s){if(e==null)return`<span class="vue-grab-ctx-val vue-grab-ctx-val--null">${e===null?"null":"undefined"}</span>`;if(typeof e=="boolean")return`<span class="vue-grab-ctx-val vue-grab-ctx-val--bool">${e}</span>`;if(typeof e=="number")return`<span class="vue-grab-ctx-val vue-grab-ctx-val--num">${e}</span>`;if(typeof e=="string"){if(e.startsWith("[Function")||e.startsWith("[Circular")||e.startsWith("[Deep")||e.startsWith("[HTML"))return`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">${l(e)}</span>`;const t=e.length>80?e.slice(0,77)+"...":e;return`<span class="vue-grab-ctx-val vue-grab-ctx-val--string">"${l(t)}"</span>`}if(Array.isArray(e)){if(e.length===0)return'<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">[]</span>';if(s>=q)return`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">Array(${e.length})</span>`;let t="";for(let n=0;n<e.length;n++)t+=`<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key vue-grab-ctx-key--index">${n}</span>${y(e[n],s+1)}
+      </div>`;return`<details class="vue-grab-ctx-inline">
+      <summary class="vue-grab-ctx-expand">Array(${e.length})</summary>
+      <div class="vue-grab-ctx-nested">${t}</div>
+    </details>`}if(typeof e=="object"){const t=Object.keys(e);if(t.length===0)return'<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{}</span>';if(s>=q)return`<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{${t.slice(0,3).join(", ")}${t.length>3?", ...":""}}</span>`;const n=t.slice(0,3).join(", ")+(t.length>3?", ...":"");let r="";for(const a of t)r+=`<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key">${l(a)}</span>${y(e[a],s+1)}
+      </div>`;return`<details class="vue-grab-ctx-inline">
+      <summary class="vue-grab-ctx-expand">{${l(n)}}</summary>
+      <div class="vue-grab-ctx-nested">${r}</div>
+    </details>`}return`<span class="vue-grab-ctx-val">${l(String(e))}</span>`}function ae(){if(o.length===0)return;const e=F(),s=w[h];if(s?.buildPromptUrl){N(e);const t=oe(),n=s.buildPromptUrl(t);if(n.length<=32e3)try{window.open(n,"_blank")}catch{}return}if(N(e),s?.scheme){const t=new Set(o.map(n=>n.componentData.filePath).filter(Boolean));for(const n of t)try{window.open(s.buildUrl(n),"_blank")}catch{}}}function oe(){const e=[];e.push(`Here is Vue component context from ${o.length} grabbed component(s):
+`);for(const t of o){const n=t.componentData;e.push(`Component: ${n.componentName}`),n.filePath&&e.push(`File: ${n.filePath}`),t.comment&&e.push(`Note: ${t.comment}`),n.props&&Object.keys(n.props).length&&e.push(`Props: ${JSON.stringify(n.props)}`),(n.data||n.setupState)&&e.push(`State: ${JSON.stringify(n.data||n.setupState)}`),n.computed?.length&&e.push(`Computed: ${n.computed.join(", ")}`),n.methods?.length&&e.push(`Methods: ${n.methods.join(", ")}`),n.element&&(n.element.selector&&e.push(`CSS Selector: ${n.element.selector}`),n.element.pageUrl&&e.push(`Page: ${n.element.pageUrl}`)),n.routerState&&e.push(`Route: ${n.routerState.fullPath}`),e.push("")}let s=e.join(`
+`);return s.length>7e3&&(s=s.slice(0,6997)+"..."),s}function J(){if(!c)return;c.querySelector(".vue-grab-panel-close")?.addEventListener("click",()=>{A(),d=!1}),c.querySelector(".vue-grab-panel-send")?.addEventListener("click",ae),c.querySelector(".vue-grab-panel-copy-all")?.addEventListener("click",le),c.querySelector(".vue-grab-panel-clear")?.addEventListener("click",()=>{o=[],O();const r=c?.querySelector(".vue-grab-panel-empty");r&&(r.style.display="block")}),c.querySelectorAll(".vue-grab-panel-editor-btn").forEach(r=>{r.addEventListener("click",a=>{const i=a.currentTarget.dataset.editor;if(i){h=i,chrome.storage?.local&&chrome.storage.local.set({selectedEditor:i});const j=c?.querySelector(".vue-grab-panel-list")?.innerHTML;if(c){c.innerHTML=M();const v=c.querySelector(".vue-grab-panel-list");v&&j&&(v.innerHTML=j),J(),T()}}})}),T()}function T(){if(!c)return;c.querySelectorAll(".vue-grab-panel-item-remove").forEach(s=>{s.addEventListener("click",t=>{const n=t.currentTarget.dataset.itemId;if(o=o.filter(r=>r.id!==n),O(),o.length===0){const r=c?.querySelector(".vue-grab-panel-empty");r&&(r.style.display="block")}})}),c.querySelectorAll(".vue-grab-panel-item-comment").forEach(s=>{s.addEventListener("input",t=>{const n=t.target,r=n.dataset.itemId,a=o.find(i=>i.id===r);a&&(a.comment=n.value)}),s.addEventListener("keydown",t=>{t.stopPropagation()})});const e=c?.querySelector(".vue-grab-panel-empty");e&&(e.style.display=o.length===0?"block":"none")}function le(){if(o.length===0)return;const e=F();N(e)}function F(){if(o.length===1){const s=o[0];let t="";return s.comment&&(t+=`> **Note:** ${s.comment}
 
-`),t+=ie(n.componentData),t}let e=`# Vue Component Context (${a.length} components)
+`),t+=ce(s.componentData),t}let e=`# Vue Component Context (${o.length} components)
 
-`;return a.forEach((n,t)=>{e+=`---
+`;return o.forEach((s,t)=>{e+=`---
 
-`,e+=`## ${t+1}. ${n.componentData.componentName}`,n.componentData.filePath&&(e+=` (${n.componentData.filePath})`),e+=`
+`,e+=`## ${t+1}. ${s.componentData.componentName}`,s.componentData.filePath&&(e+=` (${s.componentData.filePath})`),e+=`
 
-`,n.comment&&(e+=`> **Note:** ${n.comment}
+`,s.comment&&(e+=`> **Note:** ${s.comment}
 
-`),e+=J(n.componentData),e+=`
+`),e+=K(s.componentData),e+=`
 `}),e+=`---
-*Generated by Vue Grab - ${a.length} components*
-`,e}function M(e){const n=document.createElement("textarea");n.value=e,n.style.position="fixed",n.style.opacity="0",document.body.appendChild(n),n.select(),document.execCommand("copy"),document.body.removeChild(n)}function ie(e){let n=`# Vue Component Context
+*Generated by Vue Grab - ${o.length} components*
+`,e}function N(e){navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(e).catch(()=>Q(e)):Q(e)}function Q(e){const s=document.createElement("textarea");s.value=e,s.style.position="fixed",s.style.opacity="0",document.body.appendChild(s),s.select(),document.execCommand("copy"),document.body.removeChild(s)}function ce(e){let s=`# Vue Component Context
 
-`;return n+=J(e),n+=`
+`;return s+=K(e),s+=`
 ---
 *Generated by Vue Grab*
-`,n}function J(e){const n=e.element?`### Element
-- **Tag**: <${e.element.tagName}>
-- **ID**: ${e.element.id||"None"}
-- **Classes**: ${e.element.classes?.join(", ")||"None"}
-
-`:"";let t=`### Component Information
+`,s}function K(e){let s="";if(e.element){const n=e.element;s=`### Element
+- **Tag**: <${n.tagName}>
+- **ID**: ${n.id||"None"}
+- **Classes**: ${n.classes?.join(", ")||"None"}
+`,n.pageUrl&&(s+=`- **Page**: ${n.pageUrl}
+`),n.selector&&(s+=`- **CSS Selector**: \`${n.selector}\`
+`),n.xpath&&(s+=`- **XPath**: \`${n.xpath}\`
+`),n.boundingBox&&(s+=`- **Bounding Box**: x=${n.boundingBox.x}, y=${n.boundingBox.y}, ${n.boundingBox.width}x${n.boundingBox.height}
+`),n.textContent&&(s+=`- **Text**: "${n.textContent}"
+`),n.computedStyles&&Object.keys(n.computedStyles).length&&(s+=`
+**Computed Styles:**
+\`\`\`json
+${JSON.stringify(n.computedStyles,null,2)}
+\`\`\`
+`),n.renderedHtml&&(s+=`
+**Rendered HTML:**
+\`\`\`html
+${n.renderedHtml}
+\`\`\`
+`),s+=`
+`}let t=`### Component Information
 - **Name**: ${e.componentName}
 - **File**: ${e.filePath||"Unknown"}
 
-`;if(t+=n,t+=`### Props
+`;if(t+=s,t+=`### Props
 \`\`\`json
 ${JSON.stringify(e.props,null,2)}
 \`\`\`
@@ -114,28 +152,28 @@ ${e.methods?.length?e.methods.join(", "):"None"}
 `,e.piniaStores&&e.piniaStores.length>0){t+=`
 ### Pinia Stores
 
-`;const s=e.piniaStores.filter(o=>o.usedByComponent==="definitely"),r=e.piniaStores.filter(o=>o.usedByComponent==="potentially"),i=e.piniaStores.filter(o=>o.usedByComponent==="unknown");s.length>0&&(t+=`#### Definitely Used by Component
+`;const n=e.piniaStores.filter(i=>i.usedByComponent==="definitely"),r=e.piniaStores.filter(i=>i.usedByComponent==="potentially"),a=e.piniaStores.filter(i=>i.usedByComponent==="unknown");n.length>0&&(t+=`#### Definitely Used by Component
 
-`,s.forEach(o=>{t+=`**Store: ${o.id}**
+`,n.forEach(i=>{t+=`**Store: ${i.id}**
 
 `,t+=`**State:**
 \`\`\`json
-${JSON.stringify(o.state,null,2)}
+${JSON.stringify(i.state,null,2)}
 \`\`\`
 
-`,Object.keys(o.getters).length>0&&(t+=`**Getters:**
+`,Object.keys(i.getters).length>0&&(t+=`**Getters:**
 \`\`\`json
-${JSON.stringify(o.getters,null,2)}
+${JSON.stringify(i.getters,null,2)}
 \`\`\`
 
-`),o.actions.length>0&&(t+=`**Actions:** ${o.actions.join(", ")}
+`),i.actions.length>0&&(t+=`**Actions:** ${i.actions.join(", ")}
 
 `)})),r.length>0&&(t+=`#### Potentially Related Stores
 
-`,r.forEach(o=>{t+=`- **${o.id}**: ${o.actions.length} actions, ${Object.keys(o.getters).length} getters
+`,r.forEach(i=>{t+=`- **${i.id}**: ${i.actions.length} actions, ${Object.keys(i.getters).length} getters
 `}),t+=`
-`),i.length>0&&(t+=`#### Other Available Stores
-${i.map(o=>o.id).join(", ")}
+`),a.length>0&&(t+=`#### Other Available Stores
+${a.map(i=>i.id).join(", ")}
 
 `)}if(e.vuexStore&&(t+=`
 ### Vuex Store
@@ -165,27 +203,27 @@ ${JSON.stringify(e.vuexStore.getters,null,2)}
 `)),e.tanstackQueries&&e.tanstackQueries.length>0){t+=`
 ### TanStack Query (Vue Query)
 
-`;const s=e.tanstackQueries.filter(o=>o.usedByComponent==="definitely"),r=e.tanstackQueries.filter(o=>o.usedByComponent==="potentially"),i=e.tanstackQueries.filter(o=>o.usedByComponent==="unknown");s.length>0&&(t+=`#### Definitely Used by Component
+`;const n=e.tanstackQueries.filter(i=>i.usedByComponent==="definitely"),r=e.tanstackQueries.filter(i=>i.usedByComponent==="potentially"),a=e.tanstackQueries.filter(i=>i.usedByComponent==="unknown");n.length>0&&(t+=`#### Definitely Used by Component
 
-`,s.forEach(o=>{t+=`**Query: ${JSON.stringify(o.queryKey)}**
+`,n.forEach(i=>{t+=`**Query: ${JSON.stringify(i.queryKey)}**
 
-`,t+=`- **Status:** ${o.state.status}
-`,t+=`- **Fetch Status:** ${o.state.fetchStatus}
-`,t+=`- **Last Updated:** ${o.lastUpdated||"Never"}
-`,t+=`- **Data Updates:** ${o.state.dataUpdateCount}
-`,o.error&&(t+=`- **Error:** ${o.error}
+`,t+=`- **Status:** ${i.state.status}
+`,t+=`- **Fetch Status:** ${i.state.fetchStatus}
+`,t+=`- **Last Updated:** ${i.lastUpdated||"Never"}
+`,t+=`- **Data Updates:** ${i.state.dataUpdateCount}
+`,i.error&&(t+=`- **Error:** ${i.error}
 `),t+=`
 **Data:**
 \`\`\`json
-${JSON.stringify(o.data,null,2)}
+${JSON.stringify(i.data,null,2)}
 \`\`\`
 
 `})),r.length>0&&(t+=`#### Potentially Related Queries
 
-`,r.forEach(o=>{t+=`- **${JSON.stringify(o.queryKey)}**: ${o.state.status}
+`,r.forEach(i=>{t+=`- **${JSON.stringify(i.queryKey)}**: ${i.state.status}
 `}),t+=`
-`),i.length>0&&(t+=`#### Other Active Queries
-${i.map(o=>JSON.stringify(o.queryKey)).join(", ")}
+`),a.length>0&&(t+=`#### Other Active Queries
+${a.map(i=>JSON.stringify(i.queryKey)).join(", ")}
 
 `)}if(e.routerState&&(t+=`
 ### Vue Router State
@@ -209,7 +247,7 @@ ${JSON.stringify(e.routerState.query,null,2)}
 ${JSON.stringify(e.routerState.meta,null,2)}
 \`\`\`
 `),e.routerState.matched&&e.routerState.matched.length>0&&(t+=`
-**Matched Routes:** ${e.routerState.matched.map(s=>s.name||s.path).join(" > ")}
+**Matched Routes:** ${e.routerState.matched.map(n=>n.name||n.path).join(" > ")}
 `)),e.emittedEvents&&e.emittedEvents.length>0&&(t+=`
 ### Emitted Events
 ${e.emittedEvents.join(", ")}
@@ -228,7 +266,7 @@ ${JSON.stringify(e.injectedValues,null,2)}
 `)),e.slots&&Object.keys(e.slots).length>0){t+=`
 ### Slots
 
-`;for(const[s,r]of Object.entries(e.slots))t+=`#### ${s==="default"?"Default Slot":`Slot: ${s}`}
+`;for(const[n,r]of Object.entries(e.slots))t+=`#### ${n==="default"?"Default Slot":`Slot: ${n}`}
 `,typeof r=="string"?t+=`${r}
 
 `:t+=`\`\`\`json
@@ -240,15 +278,15 @@ ${JSON.stringify(r,null,2)}
 \`\`\`vue
 ${e.template}
 \`\`\`
-`),t}function u(e){const n=document.createElement("div");return n.textContent=e,n.innerHTML}function d(e,n="success"){const t=document.createElement("div");t.className=`vue-grab-toast ${n}`,t.textContent=e,document.body.appendChild(t),setTimeout(()=>{t.style.opacity="0",setTimeout(()=>t.remove(),300)},j.TOAST_DURATION)}function ae(){f=document.createElement("div"),f.className="vue-grab-active-indicator",f.innerHTML=`
+`),t}function l(e){const s=document.createElement("div");return s.textContent=e,s.innerHTML}function ue(){f=document.createElement("div"),f.className="vue-grab-active-indicator",f.innerHTML=`
     <div class="vue-grab-indicator-title">Vue Grab Active</div>
     <div class="vue-grab-indicator-shortcuts">
       <span class="shortcut"><kbd>Click</kbd>/<kbd>Enter</kbd> Add to list</span>
       <span class="shortcut"><kbd>⌥↑↓</kbd> Navigate</span>
       <span class="shortcut"><kbd>Esc</kbd> Done</span>
     </div>
-  `,document.body.appendChild(f)}function le(){f&&(f.remove(),f=null)}function q(){if(!g||g.length===0){N();return}v||(v=document.createElement("div"),v.className="vue-grab-breadcrumb",document.body.appendChild(v));const e=g.map((n,t)=>{const s=t===b,r=["vue-grab-breadcrumb-item"];return s&&r.push("active"),t<b&&r.push("parent"),`<span class="${r.join(" ")}">${n}</span>`});v.innerHTML=`
+  `,document.body.appendChild(f)}function de(){f&&(f.remove(),f=null)}function W(){if(!g||g.length===0){L();return}m||(m=document.createElement("div"),m.className="vue-grab-breadcrumb",document.body.appendChild(m));const e=g.map((s,t)=>{const n=t===b,r=["vue-grab-breadcrumb-item"];return n&&r.push("active"),t<b&&r.push("parent"),`<span class="${r.join(" ")}">${s}</span>`});m.innerHTML=`
     <div class="vue-grab-breadcrumb-path">${e.join(" > ")}</div>
     <div class="vue-grab-breadcrumb-hint">Alt+Up/Down to navigate</div>
-  `}function N(){v&&(v.remove(),v=null)}function ce(e,n){V(),!(!e||!n)&&(p=document.createElement("div"),p.className="vue-grab-floating-label",p.textContent=n,document.body.appendChild(p),ue(e))}function ue(e){if(!p||!e)return;const n=e.getBoundingClientRect(),t=p.getBoundingClientRect();let s=n.top+window.scrollY-t.height-4,r=n.left+window.scrollX;s<window.scrollY+4&&(s=n.bottom+window.scrollY+4),r+t.width>window.innerWidth-4&&(r=window.innerWidth-t.width-4),r<4&&(r=4),p.style.top=`${s}px`,p.style.left=`${r}px`}function V(){p&&(p.remove(),p=null)}})();
+  `}function L(){m&&(m.remove(),m=null)}function pe(e,s){U(),!(!e||!s)&&(p=document.createElement("div"),p.className="vue-grab-floating-label",p.textContent=s,document.body.appendChild(p),ge(e))}function ge(e){if(!p||!e)return;const s=e.getBoundingClientRect(),t=p.getBoundingClientRect();let n=s.top+window.scrollY-t.height-4,r=s.left+window.scrollX;n<window.scrollY+4&&(n=s.bottom+window.scrollY+4),r+t.width>window.innerWidth-4&&(r=window.innerWidth-t.width-4),r<4&&(r=4),p.style.top=`${n}px`,p.style.left=`${r}px`}function U(){p&&(p.remove(),p=null)}})();
 //# sourceMappingURL=content.js.map

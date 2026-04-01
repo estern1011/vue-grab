@@ -19,7 +19,9 @@ chrome.commands.onCommand.addListener((command) => {
         tab.url.startsWith('devtools://')
       )) return;
 
-      chrome.tabs.sendMessage(tab.id, { action: 'toggle' });
+      chrome.tabs.sendMessage(tab.id, { action: 'toggle' }).catch(() => {
+        // Content script not loaded on this page — ignore
+      });
     });
   }
 });

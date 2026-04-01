@@ -116,14 +116,14 @@ function handleBridgeResponse(event: Event): void {
       };
       grabbedItems.push(item);
       updatePanel();
-      showToast(`Added ${componentData.componentName} to grab list`, 'success');
+      // Item added — panel updates automatically
 
       if (pendingAction === 'editor') {
         openInEditor(componentData);
       }
       pendingAction = null;
     } else {
-      showToast(detail.error || 'No Vue component found', 'error');
+      // No component found — silent
       pendingAction = null;
     }
   } else if (detail.type === 'VUE_GRAB_COMPONENT_INFO') {
@@ -146,7 +146,7 @@ function handleBridgeResponse(event: Event): void {
       }
       updateBreadcrumb();
     } else if (detail.error) {
-      showToast(detail.error, 'error');
+      // Navigation error — silent
     }
   }
 }
@@ -239,7 +239,7 @@ function activate(): void {
 
   showActiveIndicator();
   showPanel();
-  showToast('Vue Grab activated! Click elements to add them to your grab list.', 'success');
+  // Panel is visible — no toast needed
 }
 
 function deactivate(): void {
@@ -324,7 +324,6 @@ function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement
   }
 
   if (!hoveredElement) {
-    showToast('No element selected. Hover over an element first.', 'error');
     return;
   }
 
@@ -334,7 +333,7 @@ function triggerExtraction(openInEditorMode: boolean, targetElement: HTMLElement
   }
 
   const extractionTimeout = window.setTimeout(() => {
-    showToast('Extraction timed out. Try again.', 'error');
+    // Extraction timed out
     pendingAction = null;
   }, VUE_GRAB_CONFIG.EXTRACTION_TIMEOUT);
 
@@ -348,7 +347,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     deactivate();
     isActive = false;
-    showToast('Vue Grab deactivated', 'success');
+    // Deactivated
     return;
   }
 
@@ -394,7 +393,7 @@ function extractCurrentComponent(): void {
     clearTimeout(window._vueGrabExtractionTimeout);
     window._vueGrabExtractionTimeout = undefined;
   }
-  showToast('No element selected. Try hovering over a component first.', 'error');
+  // No element selected
   pendingAction = null;
 }
 
@@ -435,19 +434,35 @@ function updatePanel(): void {
 }
 
 function buildPanelHTML(): string {
+  const editorOptions = Object.entries(VUE_GRAB_IDE_CONFIG).map(([key, config]) => {
+    const isSelected = key === selectedEditor;
+    return `<button class="vue-grab-panel-editor-btn ${isSelected ? 'active' : ''}" data-editor="${key}">${config.name}</button>`;
+  }).join('');
+
+  const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
+  const canSendDirect = config?.buildPromptUrl;
+  const sendLabel = canSendDirect ? `Send to ${config.name}` : `Copy for ${config?.name || 'Editor'}`;
+
   return `
     <div class="vue-grab-panel-header">
-      <div class="vue-grab-panel-title">
-        <span class="vue-grab-panel-logo">Vue Grab</span>
-        <span class="vue-grab-panel-count">${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''}</span>
+      <div class="vue-grab-panel-header-top">
+        <div class="vue-grab-panel-title">
+          <span class="vue-grab-panel-logo">Vue Grab</span>
+          <span class="vue-grab-panel-count">${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''}</span>
+        </div>
+        <button class="vue-grab-panel-close" title="Close (Esc)">&times;</button>
       </div>
-      <button class="vue-grab-panel-close" title="Close (Esc)">&times;</button>
+      <div class="vue-grab-panel-editor-row">
+        <span class="vue-grab-panel-editor-label">Send to</span>
+        ${editorOptions}
+      </div>
     </div>
     <div class="vue-grab-panel-list">
       ${buildItemsHTML()}
     </div>
     <div class="vue-grab-panel-actions" style="display: ${grabbedItems.length > 0 ? 'flex' : 'none'}">
-      <button class="vue-grab-panel-copy-all">Copy All</button>
+      <button class="vue-grab-panel-send">${sendLabel}</button>
+      <button class="vue-grab-panel-copy-all">Copy</button>
       <button class="vue-grab-panel-clear">Clear</button>
     </div>
     <div class="vue-grab-panel-empty" style="display: ${grabbedItems.length === 0 ? 'block' : 'none'}">
@@ -492,7 +507,7 @@ function buildItemsHTML(): string {
 function buildContextSections(data: ComponentData): string {
   let html = '';
 
-  // Element info
+  // Element info with locators
   if (data.element) {
     const el = data.element;
     const tag = `&lt;${escapeHtml(el.tagName)}&gt;`;
@@ -500,6 +515,41 @@ function buildContextSections(data: ComponentData): string {
     if (el.id) parts.push(`#${escapeHtml(el.id)}`);
     if (el.classes?.length) parts.push(el.classes.map(c => `.${escapeHtml(c)}`).join(''));
     html += `<div class="vue-grab-ctx-element">${parts.join('')}</div>`;
+
+    if (el.selector || el.pageUrl) {
+      html += `<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">Locator</summary>`;
+      if (el.pageUrl) {
+        html += `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">url</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string vue-grab-ctx-val--truncate">${escapeHtml(el.pageUrl)}</span></div>`;
+      }
+      if (el.selector) {
+        html += `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">css</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(el.selector)}</span></div>`;
+      }
+      if (el.xpath) {
+        html += `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">xpath</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(el.xpath)}</span></div>`;
+      }
+      if (el.boundingBox) {
+        const b = el.boundingBox;
+        html += `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">box</span><span class="vue-grab-ctx-val vue-grab-ctx-val--num">${b.x}, ${b.y} (${b.width}&times;${b.height})</span></div>`;
+      }
+      if (el.textContent) {
+        html += `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">text</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string vue-grab-ctx-val--truncate">"${escapeHtml(el.textContent)}"</span></div>`;
+      }
+      html += `</details>`;
+    }
+
+    // Computed styles
+    if (el.computedStyles && Object.keys(el.computedStyles).length) {
+      html += buildObjectSection('Styles', el.computedStyles);
+    }
+
+    // Rendered HTML
+    if (el.renderedHtml) {
+      html += `<details class="vue-grab-ctx-section">
+        <summary class="vue-grab-ctx-label">HTML</summary>
+        <pre class="vue-grab-ctx-code">${escapeHtml(el.renderedHtml)}</pre>
+      </details>`;
+    }
   }
 
   // Props
@@ -551,7 +601,7 @@ function buildContextSections(data: ComponentData): string {
       const badge = q.state.status;
       html += `<details class="vue-grab-ctx-section">
         <summary class="vue-grab-ctx-label">${escapeHtml(label)} <span class="vue-grab-ctx-badge vue-grab-ctx-badge--${badge}">${badge}</span></summary>
-        ${renderValue(q.data)}
+        ${renderValue(q.data, 0)}
       </details>`;
     }
   }
@@ -565,8 +615,8 @@ function buildContextSections(data: ComponentData): string {
         <span class="vue-grab-ctx-key">path</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(r.fullPath)}</span>
       </div>
       ${r.name ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">name</span><span class="vue-grab-ctx-val vue-grab-ctx-val--string">${escapeHtml(String(r.name))}</span></div>` : ''}
-      ${Object.keys(r.params || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">params</span>${renderValue(r.params)}</div>` : ''}
-      ${Object.keys(r.query || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">query</span>${renderValue(r.query)}</div>` : ''}
+      ${Object.keys(r.params || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">params</span>${renderValue(r.params, 0)}</div>` : ''}
+      ${Object.keys(r.query || {}).length ? `<div class="vue-grab-ctx-kv"><span class="vue-grab-ctx-key">query</span>${renderValue(r.query, 0)}</div>` : ''}
     </details>`;
   }
 
@@ -603,18 +653,11 @@ function buildObjectSection(label: string, obj: Record<string, any> | null): str
   if (!obj || Object.keys(obj).length === 0) return '';
 
   const keys = Object.keys(obj);
-  const previewCount = 4;
-  const hasMore = keys.length > previewCount;
-
   let inner = '';
-  const visibleKeys = hasMore ? keys.slice(0, previewCount) : keys;
-  for (const key of visibleKeys) {
+  for (const key of keys) {
     inner += `<div class="vue-grab-ctx-kv">
-      <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(obj[key])}
+      <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(obj[key], 0)}
     </div>`;
-  }
-  if (hasMore) {
-    inner += `<div class="vue-grab-ctx-more">+${keys.length - previewCount} more</div>`;
   }
 
   return `<details class="vue-grab-ctx-section" open>
@@ -635,13 +678,10 @@ function buildStoreSection(id: string, state: Record<string, any>, getters: Reco
 
   const stateKeys = Object.keys(state || {});
   if (stateKeys.length) {
-    for (const key of stateKeys.slice(0, 3)) {
+    for (const key of stateKeys) {
       inner += `<div class="vue-grab-ctx-kv">
-        <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(state[key])}
+        <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(state[key], 0)}
       </div>`;
-    }
-    if (stateKeys.length > 3) {
-      inner += `<div class="vue-grab-ctx-more">+${stateKeys.length - 3} more state</div>`;
     }
   }
 
@@ -660,7 +700,9 @@ function buildStoreSection(id: string, state: Record<string, any>, getters: Reco
   </details>`;
 }
 
-function renderValue(val: any): string {
+const MAX_RENDER_DEPTH = 4;
+
+function renderValue(val: any, depth: number): string {
   if (val === null || val === undefined) {
     return `<span class="vue-grab-ctx-val vue-grab-ctx-val--null">${val === null ? 'null' : 'undefined'}</span>`;
   }
@@ -674,19 +716,129 @@ function renderValue(val: any): string {
     if (val.startsWith('[Function') || val.startsWith('[Circular') || val.startsWith('[Deep') || val.startsWith('[HTML')) {
       return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">${escapeHtml(val)}</span>`;
     }
-    const display = val.length > 60 ? val.slice(0, 57) + '...' : val;
+    const display = val.length > 80 ? val.slice(0, 77) + '...' : val;
     return `<span class="vue-grab-ctx-val vue-grab-ctx-val--string">"${escapeHtml(display)}"</span>`;
   }
+
   if (Array.isArray(val)) {
     if (val.length === 0) return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">[]</span>`;
-    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">Array(${val.length})</span>`;
+    if (depth >= MAX_RENDER_DEPTH) {
+      return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">Array(${val.length})</span>`;
+    }
+
+    let inner = '';
+    for (let i = 0; i < val.length; i++) {
+      inner += `<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key vue-grab-ctx-key--index">${i}</span>${renderValue(val[i], depth + 1)}
+      </div>`;
+    }
+
+    return `<details class="vue-grab-ctx-inline">
+      <summary class="vue-grab-ctx-expand">Array(${val.length})</summary>
+      <div class="vue-grab-ctx-nested">${inner}</div>
+    </details>`;
   }
+
   if (typeof val === 'object') {
     const keys = Object.keys(val);
     if (keys.length === 0) return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{}</span>`;
-    return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? ', ...' : ''}}</span>`;
+    if (depth >= MAX_RENDER_DEPTH) {
+      return `<span class="vue-grab-ctx-val vue-grab-ctx-val--ref">{${keys.slice(0, 3).join(', ')}${keys.length > 3 ? ', ...' : ''}}</span>`;
+    }
+
+    const preview = keys.slice(0, 3).join(', ') + (keys.length > 3 ? ', ...' : '');
+    let inner = '';
+    for (const key of keys) {
+      inner += `<div class="vue-grab-ctx-kv">
+        <span class="vue-grab-ctx-key">${escapeHtml(key)}</span>${renderValue(val[key], depth + 1)}
+      </div>`;
+    }
+
+    return `<details class="vue-grab-ctx-inline">
+      <summary class="vue-grab-ctx-expand">{${escapeHtml(preview)}}</summary>
+      <div class="vue-grab-ctx-nested">${inner}</div>
+    </details>`;
   }
+
   return `<span class="vue-grab-ctx-val">${escapeHtml(String(val))}</span>`;
+}
+
+function handleSendToEditor(): void {
+  if (grabbedItems.length === 0) {
+    return;
+    return;
+  }
+
+  const formatted = formatAllGrabbedItems();
+  const config = VUE_GRAB_IDE_CONFIG[selectedEditor];
+
+  // If the editor supports prompt deep links, send context directly
+  if (config?.buildPromptUrl) {
+    // Also copy to clipboard as backup (full untruncated version)
+    copyToClipboardText(formatted);
+
+    // Cursor deep links have a URL length limit (~8K chars after encoding).
+    // Build a condensed plain-text version for the deep link.
+    const condensed = buildCondensedContext();
+    const url = config.buildPromptUrl(condensed);
+
+    // URL length safety check — browsers typically cap around 2MB but
+    // Cursor's handler may be stricter. Fall back to clipboard if too large.
+    if (url.length <= 32000) {
+      try { window.open(url, '_blank'); } catch { /* fallback is clipboard */ }
+    }
+    return;
+  }
+
+  // For editors without prompt deep links, copy to clipboard + open file
+  copyToClipboardText(formatted);
+  if (config?.scheme) {
+    const filePaths = new Set(
+      grabbedItems.map(i => i.componentData.filePath).filter(Boolean) as string[]
+    );
+    for (const fp of filePaths) {
+      try { window.open(config.buildUrl(fp), '_blank'); } catch { /* ignore */ }
+    }
+  }
+}
+
+function buildCondensedContext(): string {
+  const parts: string[] = [];
+  parts.push(`Here is Vue component context from ${grabbedItems.length} grabbed component(s):\n`);
+
+  for (const item of grabbedItems) {
+    const d = item.componentData;
+    parts.push(`Component: ${d.componentName}`);
+    if (d.filePath) parts.push(`File: ${d.filePath}`);
+    if (item.comment) parts.push(`Note: ${item.comment}`);
+
+    if (d.props && Object.keys(d.props).length) {
+      parts.push(`Props: ${JSON.stringify(d.props)}`);
+    }
+    if (d.data || d.setupState) {
+      parts.push(`State: ${JSON.stringify(d.data || d.setupState)}`);
+    }
+    if (d.computed?.length) parts.push(`Computed: ${d.computed.join(', ')}`);
+    if (d.methods?.length) parts.push(`Methods: ${d.methods.join(', ')}`);
+
+    if (d.element) {
+      if (d.element.selector) parts.push(`CSS Selector: ${d.element.selector}`);
+      if (d.element.pageUrl) parts.push(`Page: ${d.element.pageUrl}`);
+    }
+
+    if (d.routerState) {
+      parts.push(`Route: ${d.routerState.fullPath}`);
+    }
+
+    parts.push(''); // blank line between components
+  }
+
+  // Cap to stay within URL limits
+  let result = parts.join('\n');
+  if (result.length > 7000) {
+    result = result.slice(0, 6997) + '...';
+  }
+  return result;
 }
 
 function attachPanelListeners(): void {
@@ -698,6 +850,9 @@ function attachPanelListeners(): void {
     isActive = false;
   });
 
+  const sendBtn = panelElement.querySelector('.vue-grab-panel-send');
+  sendBtn?.addEventListener('click', handleSendToEditor);
+
   const copyAllBtn = panelElement.querySelector('.vue-grab-panel-copy-all');
   copyAllBtn?.addEventListener('click', handleCopyAll);
 
@@ -707,6 +862,28 @@ function attachPanelListeners(): void {
     updatePanel();
     const emptyEl = panelElement?.querySelector('.vue-grab-panel-empty') as HTMLElement | null;
     if (emptyEl) emptyEl.style.display = 'block';
+  });
+
+  // Editor selector buttons
+  panelElement.querySelectorAll('.vue-grab-panel-editor-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const editor = (e.currentTarget as HTMLElement).dataset.editor;
+      if (editor) {
+        selectedEditor = editor;
+        if (chrome.storage?.local) {
+          chrome.storage.local.set({ selectedEditor: editor });
+        }
+        // Re-render panel to update button states and send label
+        const listContent = panelElement?.querySelector('.vue-grab-panel-list')?.innerHTML;
+        if (panelElement) {
+          panelElement.innerHTML = buildPanelHTML();
+          const listEl = panelElement.querySelector('.vue-grab-panel-list');
+          if (listEl && listContent) listEl.innerHTML = listContent;
+          attachPanelListeners();
+          attachItemListeners();
+        }
+      }
+    });
   });
 
   attachItemListeners();
@@ -750,23 +927,12 @@ function attachItemListeners(): void {
 
 function handleCopyAll(): void {
   if (grabbedItems.length === 0) {
-    showToast('No components grabbed yet.', 'error');
+    return;
     return;
   }
 
   const formatted = formatAllGrabbedItems();
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(formatted).then(() => {
-      showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
-    }).catch(err => {
-      console.error('Could not copy to clipboard:', err);
-      fallbackCopy(formatted);
-      showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
-    });
-  } else {
-    fallbackCopy(formatted);
-    showToast(`Copied ${grabbedItems.length} component${grabbedItems.length !== 1 ? 's' : ''} to clipboard!`, 'success');
-  }
+  copyToClipboardText(formatted);
 }
 
 function formatAllGrabbedItems(): string {
@@ -806,6 +972,14 @@ function formatAllGrabbedItems(): string {
 // Clipboard & Formatting
 // ============================================================================
 
+function copyToClipboardText(text: string): void {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
 function fallbackCopy(text: string): void {
   const textarea = document.createElement('textarea');
   textarea.value = text;
@@ -825,9 +999,23 @@ function formatForClaudeCCode(data: ComponentData): string {
 }
 
 function formatSingleComponent(data: ComponentData): string {
-  const elementInfo = data.element
-    ? `### Element\n- **Tag**: <${data.element.tagName}>\n- **ID**: ${data.element.id || 'None'}\n- **Classes**: ${data.element.classes?.join(', ') || 'None'}\n\n`
-    : '';
+  let elementInfo = '';
+  if (data.element) {
+    const el = data.element;
+    elementInfo = `### Element\n- **Tag**: <${el.tagName}>\n- **ID**: ${el.id || 'None'}\n- **Classes**: ${el.classes?.join(', ') || 'None'}\n`;
+    if (el.pageUrl) elementInfo += `- **Page**: ${el.pageUrl}\n`;
+    if (el.selector) elementInfo += `- **CSS Selector**: \`${el.selector}\`\n`;
+    if (el.xpath) elementInfo += `- **XPath**: \`${el.xpath}\`\n`;
+    if (el.boundingBox) elementInfo += `- **Bounding Box**: x=${el.boundingBox.x}, y=${el.boundingBox.y}, ${el.boundingBox.width}x${el.boundingBox.height}\n`;
+    if (el.textContent) elementInfo += `- **Text**: "${el.textContent}"\n`;
+    if (el.computedStyles && Object.keys(el.computedStyles).length) {
+      elementInfo += `\n**Computed Styles:**\n\`\`\`json\n${JSON.stringify(el.computedStyles, null, 2)}\n\`\`\`\n`;
+    }
+    if (el.renderedHtml) {
+      elementInfo += `\n**Rendered HTML:**\n\`\`\`html\n${el.renderedHtml}\n\`\`\`\n`;
+    }
+    elementInfo += '\n';
+  }
 
   let output = `### Component Information\n- **Name**: ${data.componentName}\n- **File**: ${data.filePath || 'Unknown'}\n\n`;
   output += elementInfo;
@@ -985,18 +1173,6 @@ function escapeHtml(str: string): string {
 // ============================================================================
 // UI Elements
 // ============================================================================
-
-function showToast(message: string, type: 'success' | 'error' = 'success'): void {
-  const toast = document.createElement('div');
-  toast.className = `vue-grab-toast ${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, VUE_GRAB_CONFIG.TOAST_DURATION);
-}
 
 function showActiveIndicator(): void {
   activeIndicator = document.createElement('div');

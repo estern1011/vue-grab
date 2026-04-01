@@ -13,7 +13,9 @@ export const VUE_GRAB_IDE_CONFIG: IDEConfigMap = {
   cursor: {
     name: 'Cursor',
     scheme: 'cursor',
-    buildUrl: (filePath: string): string => `cursor://file/${filePath || ''}`
+    buildUrl: (filePath: string): string => `cursor://file/${filePath || ''}`,
+    buildPromptUrl: (context: string): string =>
+      `cursor://anysphere.cursor-deeplink/prompt?text=${encodeURIComponent(context)}`
   },
   windsurf: {
     name: 'Windsurf',

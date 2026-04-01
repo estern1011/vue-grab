@@ -34,7 +34,7 @@
   right: 20px;
   background: #2c3e50;
   color: white;
-  padding: 16px 20px;
+  padding: 12px 36px 12px 16px;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 2147483646;
@@ -43,6 +43,25 @@
   max-width: 400px;
   animation: vueGrabSlideIn 0.3s ease-out;
   transition: opacity 0.3s;
+}
+
+.vue-grab-toast-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.vue-grab-toast-dismiss:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .vue-grab-toast.success {
@@ -179,13 +198,16 @@
 }
 
 .vue-grab-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
+  padding: 12px 16px;
   background: #16213e;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+}
+
+.vue-grab-panel-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .vue-grab-panel-title {
@@ -414,8 +436,9 @@
 .vue-grab-ctx-kv {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 2px 8px 2px 20px;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  padding: 1px 8px 1px 16px;
   font-size: 11px;
   line-height: 1.6;
 }
@@ -440,6 +463,61 @@
 .vue-grab-ctx-val--bool { color: #e78284; }
 .vue-grab-ctx-val--null { color: #737994; font-style: italic; }
 .vue-grab-ctx-val--ref { color: #737994; }
+.vue-grab-ctx-val--truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+
+/* Inline expandable values (arrays/objects) */
+.vue-grab-ctx-inline {
+  display: inline;
+}
+
+.vue-grab-ctx-inline[open] {
+  display: block;
+  flex-basis: 100%;
+}
+
+.vue-grab-ctx-expand {
+  display: inline;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: #81a1c1;
+  cursor: pointer;
+  list-style: none;
+}
+
+.vue-grab-ctx-expand::-webkit-details-marker { display: none; }
+
+.vue-grab-ctx-expand::before {
+  content: '\25B6';
+  font-size: 7px;
+  color: #666;
+  margin-right: 4px;
+  display: inline-block;
+  transition: transform 0.15s;
+}
+
+.vue-grab-ctx-inline[open] > .vue-grab-ctx-expand::before {
+  transform: rotate(90deg);
+}
+
+.vue-grab-ctx-expand:hover {
+  color: #88c0d0;
+}
+
+.vue-grab-ctx-nested {
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  margin-left: 2px;
+}
+
+/* Reduce padding on deeply nested kv pairs */
+.vue-grab-ctx-nested .vue-grab-ctx-kv {
+  padding-left: 4px;
+}
+
+.vue-grab-ctx-key--index {
+  color: #737994;
+  min-width: 12px;
+}
 
 .vue-grab-ctx-more {
   padding: 2px 8px 2px 20px;
@@ -453,7 +531,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 4px 8px 4px 20px;
+  padding: 4px 8px 4px 16px;
 }
 
 .vue-grab-ctx-tag {
@@ -517,6 +595,44 @@
   font-style: italic;
 }
 
+/* Editor selector in header */
+.vue-grab-panel-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.vue-grab-panel-editor-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #555;
+}
+
+.vue-grab-panel-editor-btn {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.vue-grab-panel-editor-btn:hover {
+  color: #888;
+}
+
+.vue-grab-panel-editor-btn.active {
+  background: rgba(66, 184, 131, 0.15);
+  color: #42b883;
+}
+
 /* Panel actions */
 .vue-grab-panel-actions {
   display: flex;
@@ -527,30 +643,52 @@
   flex-shrink: 0;
 }
 
-.vue-grab-panel-copy-all {
+.vue-grab-panel-send {
   flex: 1;
-  padding: 10px;
+  padding: 8px;
   background: #42b883;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.vue-grab-panel-copy-all:hover {
+.vue-grab-panel-send:hover {
   background: #35a372;
 }
 
-.vue-grab-panel-clear {
-  padding: 10px 16px;
+.vue-grab-panel-actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.vue-grab-panel-copy-all {
+  flex: 1;
+  padding: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: #aaa;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.vue-grab-panel-copy-all:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.vue-grab-panel-clear {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aaa;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
