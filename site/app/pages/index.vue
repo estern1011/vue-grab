@@ -24,6 +24,8 @@ function updateComment(id: string, comment: string) {
     <GrabOverlay
       :is-active="grab.isActive.value"
       :hovered-component="grab.hoveredComponent.value"
+      :hierarchy="grab.hierarchy.value"
+      :hierarchy-index="grab.hierarchyIndex.value"
       @deactivate="grab.deactivate()"
     />
 

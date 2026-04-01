@@ -16,12 +16,24 @@ export interface GrabResult {
   storeState: Record<string, any> | null
 }
 
+interface HierarchyItem {
+  name: string
+  instance: any
+  el: HTMLElement | null
+}
+
 export function useVueGrab() {
   const isActive = ref(false)
   const hoveredComponent = ref<string | null>(null)
   const grabbedItems = ref<Array<{ id: string; data: GrabResult; comment: string }>>([])
+  const hierarchy = ref<string[]>([])
+  const hierarchyIndex = ref(-1)
+
   let floatingLabel: HTMLElement | null = null
   let currentHighlight: HTMLElement | null = null
+  let currentHierarchy: HierarchyItem[] = []
+  let currentHierarchyIndex = -1
+  let lastHoveredElement: HTMLElement | null = null
 
   function activate() {
     isActive.value = true
@@ -38,6 +50,10 @@ export function useVueGrab() {
     document.removeEventListener('click', onClick, true)
     document.removeEventListener('keydown', onKeyDown)
     clearHighlight()
+    currentHierarchy = []
+    currentHierarchyIndex = -1
+    hierarchy.value = []
+    hierarchyIndex.value = -1
   }
 
   function toggle() {
@@ -53,11 +69,14 @@ export function useVueGrab() {
     if (!info) return
 
     clearHighlight()
-    currentHighlight = target
-    target.style.outline = '2px solid #42b883'
-    target.style.outlineOffset = '2px'
-    target.style.cursor = 'crosshair'
+    lastHoveredElement = target
 
+    // Build hierarchy from root down to the hovered component
+    currentHierarchy = buildHierarchy(info.instance)
+    currentHierarchyIndex = currentHierarchy.length - 1
+    syncHierarchyRefs()
+
+    highlightElement(target)
     hoveredComponent.value = info.name
     showLabel(target, info.name)
   }
@@ -67,6 +86,10 @@ export function useVueGrab() {
     if (target.closest('.vue-grab-embedded-panel')) return
     clearHighlight()
     hoveredComponent.value = null
+    currentHierarchy = []
+    currentHierarchyIndex = -1
+    hierarchy.value = []
+    hierarchyIndex.value = -1
   }
 
   function onClick(e: MouseEvent) {
@@ -76,20 +99,88 @@ export function useVueGrab() {
     e.preventDefault()
     e.stopPropagation()
 
-    const result = extractFromElement(target)
-    if (result) {
-      grabbedItems.value.push({
-        id: Math.random().toString(36).slice(2),
-        data: result,
-        comment: '',
-      })
+    // If navigated to a parent, grab the component at the current hierarchy index
+    const item = currentHierarchy[currentHierarchyIndex]
+    if (item) {
+      const result = extractFromInstance(item.instance, item.name)
+      if (result) {
+        grabbedItems.value.push({
+          id: Math.random().toString(36).slice(2),
+          data: result,
+          comment: '',
+        })
+      }
+    } else {
+      // Fallback to extracting from the clicked element directly
+      const result = extractFromElement(target)
+      if (result) {
+        grabbedItems.value.push({
+          id: Math.random().toString(36).slice(2),
+          data: result,
+          comment: '',
+        })
+      }
     }
   }
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       deactivate()
+      return
     }
+
+    if (!e.altKey || currentHierarchy.length === 0) return
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (currentHierarchyIndex > 0) {
+        currentHierarchyIndex--
+        applyHierarchyNavigation()
+      }
+      return
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      e.stopPropagation()
+      if (currentHierarchyIndex < currentHierarchy.length - 1) {
+        currentHierarchyIndex++
+        applyHierarchyNavigation()
+      }
+      return
+    }
+  }
+
+  function applyHierarchyNavigation() {
+    const item = currentHierarchy[currentHierarchyIndex]
+    if (!item) return
+
+    syncHierarchyRefs()
+    hoveredComponent.value = item.name
+
+    // Try to highlight the component's root element
+    clearHighlight()
+    const el = getComponentElement(item.instance)
+    if (el) {
+      highlightElement(el)
+      showLabel(el, item.name)
+    } else if (lastHoveredElement) {
+      highlightElement(lastHoveredElement)
+      showLabel(lastHoveredElement, item.name)
+    }
+  }
+
+  function syncHierarchyRefs() {
+    hierarchy.value = currentHierarchy.map(h => h.name)
+    hierarchyIndex.value = currentHierarchyIndex
+  }
+
+  function highlightElement(el: HTMLElement) {
+    currentHighlight = el
+    el.style.outline = '2px solid #42b883'
+    el.style.outlineOffset = '2px'
+    el.style.cursor = 'crosshair'
   }
 
   function clearHighlight() {
@@ -130,6 +221,36 @@ export function useVueGrab() {
     floatingLabel = null
   }
 
+  function buildHierarchy(instance: any): HierarchyItem[] {
+    const items: HierarchyItem[] = []
+    let current = instance
+
+    while (current) {
+      const name = current.type?.name || current.type?.__name || 'Anonymous'
+      // Skip anonymous/fragment wrappers
+      if (name !== 'Anonymous') {
+        items.unshift({
+          name,
+          instance: current,
+          el: getComponentElement(current),
+        })
+      }
+      current = current.parent
+    }
+
+    return items
+  }
+
+  function getComponentElement(instance: any): HTMLElement | null {
+    // Vue 3 internal: vnode.el is the root DOM element
+    const el = instance.vnode?.el
+    if (el instanceof HTMLElement) return el
+    // subTree may have the element
+    const subEl = instance.subTree?.el
+    if (subEl instanceof HTMLElement) return subEl
+    return null
+  }
+
   function findVueComponent(el: HTMLElement): { name: string; instance: any } | null {
     let current: HTMLElement | null = el
     while (current) {
@@ -143,28 +264,23 @@ export function useVueGrab() {
     return null
   }
 
-  function extractFromElement(el: HTMLElement): GrabResult | null {
-    const info = findVueComponent(el)
-    if (!info) return null
-
-    const inst = info.instance
+  function extractFromInstance(instance: any, name: string): GrabResult | null {
     const result: GrabResult = {
-      componentName: info.name,
-      filePath: inst.type?.__file || null,
-      props: safeSerialize(inst.props),
-      state: extractState(inst),
+      componentName: name,
+      filePath: instance.type?.__file || null,
+      props: safeSerialize(instance.props),
+      state: extractState(instance),
       computed: [],
       methods: [],
       storeName: null,
       storeState: null,
     }
 
-    // Extract computed and methods from setupState
-    if (inst.setupState) {
-      for (const key of Object.keys(inst.setupState)) {
+    if (instance.setupState) {
+      for (const key of Object.keys(instance.setupState)) {
         if (key.startsWith('_') || key.startsWith('$')) continue
         try {
-          const val = inst.setupState[key]
+          const val = instance.setupState[key]
           if (typeof val === 'function') {
             result.methods.push(key)
           } else if (val && typeof val === 'object' && val.effect && '__v_isRef' in val) {
@@ -174,11 +290,10 @@ export function useVueGrab() {
       }
     }
 
-    // Check for Pinia store
-    if (inst.setupState) {
-      for (const key of Object.keys(inst.setupState)) {
+    if (instance.setupState) {
+      for (const key of Object.keys(instance.setupState)) {
         try {
-          const val = inst.setupState[key]
+          const val = instance.setupState[key]
           if (val && val.$id && val.$state) {
             result.storeName = val.$id
             result.storeState = safeSerialize(val.$state)
@@ -189,6 +304,12 @@ export function useVueGrab() {
     }
 
     return result
+  }
+
+  function extractFromElement(el: HTMLElement): GrabResult | null {
+    const info = findVueComponent(el)
+    if (!info) return null
+    return extractFromInstance(info.instance, info.name)
   }
 
   function extractState(inst: any): Record<string, any> | null {
@@ -279,6 +400,8 @@ export function useVueGrab() {
     isActive,
     hoveredComponent,
     grabbedItems,
+    hierarchy,
+    hierarchyIndex,
     toggle,
     activate,
     deactivate,

@@ -34,6 +34,7 @@ defineEmits<{
             </template>
             <template v-else>
               Hover to see component names. <strong class="text-white">Click to grab.</strong>
+              <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Alt+↑↓</kbd> navigate tree.
               <kbd class="ml-1 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px]">Esc</kbd> to stop.
             </template>
           </p>

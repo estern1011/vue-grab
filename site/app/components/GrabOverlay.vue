@@ -2,6 +2,8 @@
 defineProps<{
   isActive: boolean
   hoveredComponent: string | null
+  hierarchy: string[]
+  hierarchyIndex: number
 }>()
 
 defineEmits<{
@@ -24,22 +26,34 @@ defineEmits<{
           <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Click</kbd> Add to list
         </span>
         <span class="flex items-center gap-1">
+          <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">⌥↑↓</kbd> Navigate
+        </span>
+        <span class="flex items-center gap-1">
           <kbd class="rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd> Done
         </span>
       </div>
     </div>
   </Transition>
 
-  <!-- Breadcrumb (shows hovered component at top-center) -->
+  <!-- Breadcrumb (shows component hierarchy at top-center) -->
   <Transition name="breadcrumb">
     <div
-      v-if="isActive && hoveredComponent"
+      v-if="isActive && hoveredComponent && hierarchy.length > 0"
       class="vue-grab-embedded-btn fixed left-1/2 top-5 z-[999997] -translate-x-1/2 rounded-lg bg-[#2c3e50] px-4 py-2.5 font-sans shadow-lg"
     >
-      <div class="flex items-center gap-2 text-xs text-white">
-        <span class="rounded bg-white/10 px-2 py-0.5 text-[#9b9bb2]">App</span>
-        <span class="text-[#8b8ba7]">&rsaquo;</span>
-        <span class="rounded bg-[#42b883] px-2 py-0.5 font-semibold">{{ hoveredComponent }}</span>
+      <div class="flex items-center gap-1.5 text-xs text-white">
+        <template v-for="(name, i) in hierarchy" :key="i">
+          <span v-if="i > 0" class="text-[#8b8ba7]">&rsaquo;</span>
+          <span
+            class="rounded px-2 py-0.5"
+            :class="i === hierarchyIndex
+              ? 'bg-[#42b883] font-semibold'
+              : 'bg-white/10 text-[#9b9bb2]'"
+          >{{ name }}</span>
+        </template>
+      </div>
+      <div v-if="hierarchy.length > 1" class="mt-1.5 text-center text-[10px] text-white/50">
+        Alt+Up/Down to navigate
       </div>
     </div>
   </Transition>
