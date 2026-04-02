@@ -15,7 +15,9 @@ defineEmits<{
         <div>
           <h1 class="text-2xl font-bold text-white">Vue Grab</h1>
           <p class="mt-1 text-sm text-dim">
-            Chrome extension to select Vue component context for your AI coding agent.
+            Chrome extension to grab Vue component context for your AI coding agent.
+            Inspired by
+            <a href="https://github.com/nicholasgriffintn/react-grab" class="text-primary hover:underline">react-grab</a>.
           </p>
         </div>
         <a
