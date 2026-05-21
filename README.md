@@ -2,7 +2,7 @@
 
 Chrome extension that extracts Vue component context for AI coding agents. Click a component in your running app and get its props, state, stores, routes, and DOM locators — ready to paste into Claude Code, Cursor, or any clipboard workflow.
 
-**[Try it live](https://vue-grab.vercel.app)**
+**[Try it live](https://vue-grab.eastern.sh)**
 
 ## What it extracts
 
