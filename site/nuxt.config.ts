@@ -32,7 +32,7 @@ export default defineNuxtConfig({
   },
 
   css: ['~/assets/main.css'],
-  modules: ['@nuxtjs/tailwindcss', 'shadcn-nuxt', '@pinia/nuxt', '@vercel/analytics'],
+  modules: ['@nuxtjs/tailwindcss', 'shadcn-nuxt', '@pinia/nuxt', '@vercel/analytics/nuxt'],
   tailwindcss: {
     config: {
       theme: {
